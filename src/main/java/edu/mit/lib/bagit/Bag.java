@@ -215,18 +215,15 @@ public class Bag {
     public boolean isValid() throws IOException {
         if (! isComplete()) return false;
         // recompute all checksums and compare against manifest values
-        String csAlg = csAlgorithm();
-        String sfx = csAlg.toLowerCase() + ".txt";
-        // payload files agree?
-        Map<String, String> plChecksums = manifest(MANIF_FILE + sfx);
-        for (String relPath : plChecksums.keySet()) {
+        Map<String, String> payloads = payloadManifest();
+        for (String relPath : payloads.keySet()) {
             String cutPath = relPath.substring(DATA_PATH.length());
-            if (! validateFile(payloadStream(cutPath), plChecksums.get(relPath), csAlg)) return false;
+            if (! validateFile(payloadStream(cutPath), payloads.get(relPath), csAlgorithm())) return false;
         }
         // same for tag files
-        Map<String, String> tagChecksums = manifest(TAGMANIF_FILE + sfx);
-        for (String relPath : tagChecksums.keySet()) {
-            if (! validateFile(tagStream(relPath), tagChecksums.get(relPath), csAlg)) return false;
+        Map<String, String> tags = tagManifest();
+        for (String relPath : tags.keySet()) {
+            if (! validateFile(tagStream(relPath), tags.get(relPath), csAlgorithm())) return false;
         }
         return true;
     }
