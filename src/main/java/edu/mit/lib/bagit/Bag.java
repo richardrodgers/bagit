@@ -166,19 +166,16 @@ public class Bag {
         // mandatory files present?
         if (! (bagFile(DECL_FILE).exists() &&
                bagFile(DATA_DIR).isDirectory())) return false;
-        // determine checksum in use
-        String csAlg = csAlgorithm();
-        String sfx = csAlg.toLowerCase() + ".txt";
         // payload files map?
-        Map<String, String> plChecksums = manifest(MANIF_FILE + sfx);
+        Map<String, String> payloads = payloadManifest();
         // # payload files and # manifest entries must agree
-        if (fileCount(bagFile(DATA_DIR)) != plChecksums.size()) return false;
+        if (fileCount(bagFile(DATA_DIR)) != payloads.size()) return false;
         // files themselves must match also
-        for (String path : plChecksums.keySet()) {
+        for (String path : payloads.keySet()) {
             if (path.startsWith(DATA_DIR) && ! bagFile(path).exists()) return false;
         }
         // same drill for tag files
-        Map<String, String> tagChecksums = manifest(TAGMANIF_FILE + sfx);
+        Map<String, String> tags = tagManifest();
         // # tag files and # manifest entries must agree
         // tag files consist of any top-level files except:
         // tagmanifest itself, and the payload directory.
@@ -193,9 +190,9 @@ public class Bag {
             if (tag.isDirectory()) tagCount += fileCount(tag);
             else tagCount++;
         }
-        if (tagCount != tagChecksums.size()) return false;
+        if (tagCount != tags.size()) return false;
         // files themselves must match also
-        for (String path : tagChecksums.keySet()) {
+        for (String path : tags.keySet()) {
             if (! bagFile(path).exists()) return false;
         }
         return true;

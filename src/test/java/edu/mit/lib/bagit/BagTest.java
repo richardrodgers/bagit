@@ -55,11 +55,11 @@ public class BagTest {
 	     Files.copy(payload1.toPath(), tag2.toPath(), REPLACE_EXISTING);
 	  }
 
-	  @Test
-	  public void basicBagPartsPresentMD5() throws IOException, IllegalAccessException {
-	  	  File bagFile = tempFolder.newFolder("bag1");
-	  	  new Filler(bagFile).payload(payload1).toDirectory();
-	  	  File decl = new File(bagFile, DECL_FILE);
+    @Test
+    public void basicBagPartsPresentMD5() throws IOException, IllegalAccessException {
+        File bagFile = tempFolder.newFolder("bag1");
+        new Filler(bagFile).payload(payload1).toDirectory();
+        File decl = new File(bagFile, DECL_FILE);
         assertTrue(decl.exists());
         File manifest = new File(bagFile, "manifest-md5.txt");
         assertTrue(manifest.exists());
@@ -73,13 +73,13 @@ public class BagTest {
         Bag bag = new Loader(bagFile).load();
         assertTrue(bag.isComplete());
         assertTrue(bag.isValid());
-	  }
+    }
 
-	  @Test
-	  public void basicBagPartsPresentSHA1() throws IOException, IllegalAccessException {
-	  	  File bagFile = tempFolder.newFolder("bag2");
-	  	  new Filler(bagFile, "SHA1").payload(payload1).toDirectory();
-	  	  File decl = new File(bagFile, DECL_FILE);
+    @Test
+    public void basicBagPartsPresentSHA1() throws IOException, IllegalAccessException {
+        File bagFile = tempFolder.newFolder("bag2");
+        new Filler(bagFile, "SHA1").payload(payload1).toDirectory();
+        File decl = new File(bagFile, DECL_FILE);
         assertTrue(decl.exists());
         File manifest = new File(bagFile, "manifest-sha1.txt");
         assertTrue(manifest.exists());
@@ -92,7 +92,7 @@ public class BagTest {
         // assure completeness
         Bag bag = new Loader(bagFile).load();
         assertTrue(bag.isComplete());
-	  }
+    }
 
 	  @Test
 	  public void multiPayloadBag() throws IOException {
@@ -163,13 +163,13 @@ public class BagTest {
     @Test
     public void completeAndIncompleteBag() throws IOException {
         File bagFile = tempFolder.newFolder("bag8");
-	  	  Filler filler = new Filler(bagFile).payload("first.pdf", payload1).payload("second.pdf", payload2);
-	  	  Bag bag = new Loader(filler.toDirectory()).load();
-	  	  assertTrue(bag.isComplete());
-	  	  // now remove a payload file
-	  	  File toDel = new File(bagFile, "data/first.pdf");
-	  	  toDel.delete();
-	  	  assertTrue(!bag.isComplete());
+        Filler filler = new Filler(bagFile).payload("first.pdf", payload1).payload("second.pdf", payload2);
+        Bag bag = new Loader(filler.toDirectory()).load();
+        assertTrue(bag.isComplete());
+        // now remove a payload file
+        File toDel = new File(bagFile, "data/first.pdf");
+        toDel.delete();
+        assertTrue(!bag.isComplete());
     }
 
     @Test
