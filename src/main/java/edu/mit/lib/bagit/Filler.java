@@ -144,7 +144,7 @@ public class Filler {
 
     /**
      * Disables the automatic generation of metadata.
-     * Normally generated: Bagging-Date, Bag-Size, Payload-Oxnum
+     * Normally generated: Bagging-Date, Bag-Size, Payload-Oxnum, Bag-Software-Agent
      */
     public Filler noAutoGen() {
     	autogen = false;
@@ -290,7 +290,7 @@ public class Filler {
      * @param value the property value
      */
     public Filler metadata(MetadataName name, String value) throws IOException {
-        return metadata(META_FILE, name.getName(), value);
+        return property(META_FILE, name.getName(), value);
     }
 
     /**
@@ -301,17 +301,18 @@ public class Filler {
      * @param value the property value
      */
     public Filler metadata(String name, String value) throws IOException {
-        return metadata(META_FILE, name, value);
+        return property(META_FILE, name, value);
     }
 
     /**
-     * Adds a metadata property to the passed metadata file
+     * Adds a property to the passed property file.
+     * Typically used for metadata properties in tag files.
      *
-     * @param relPath the bag-relative path to the metadata (tag) file
+     * @param relPath the bag-relative path to the property file
      * @param name the property name
      * @param value the property value
      */
-    public Filler metadata(String relPath, String name, String value) throws IOException {
+    public Filler property(String relPath, String name, String value) throws IOException {
         FlatWriter writer = getWriter(relPath);
         writer.writeProperty(name, value);
         return this;

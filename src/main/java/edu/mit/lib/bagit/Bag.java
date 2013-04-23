@@ -307,17 +307,18 @@ public class Bag {
      * @return values property value for passed name, or empty list if no such property defined.
      */
     public List<String> metadata(String name) throws IOException {
-        return metadata(META_FILE, name);
+        return property(META_FILE, name);
     }
 
     /**
-     * Returns the values of a metadata property, if any, in named tag file in order declared.
+     * Returns the values of a property, if any, in named file in order declared.
+     * Typically used for metadata properties in tag files.
      *
-     * @param relPath bag-relative path to the tag file
-     * @param name the metadata property name
+     * @param relPath bag-relative path to the property file
+     * @param name the property name
      * @return values property value for passed name, or empty list if no such property defined.
      */
-    public List<String> metadata(String relPath, String name) throws IOException {
+    public List<String> property(String relPath, String name) throws IOException {
         Map<String, List<String>> mdSet = mdCache.get(relPath);
     	if (mdSet == null) {
     	    synchronized (mdCache) {
