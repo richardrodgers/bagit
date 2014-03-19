@@ -1,40 +1,25 @@
 /**
- * Copyright 2013 MIT Libraries
+ * Copyright 2013, 2014 MIT Libraries
  * Licensed under: http://www.apache.org/licenses/LICENSE-2.0
  */
 
 package edu.mit.lib.bagit;
 
-import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileFilter;
-import java.io.FilenameFilter;
-import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.DigestInputStream;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
-
-import org.apache.commons.compress.archivers.ArchiveOutputStream;
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
-import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
-import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 
 /**
  * Bag represents a rudimentary bag conformant to LC Bagit spec - version 0.97.
@@ -43,7 +28,8 @@ import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
  * can be written only once (have no update semantics), and can be 'holey' -
  * meaning they can contain content by reference as well as inclusion. 
  * 
- * The bag also can serialize itself to a compressed archive file (supported
+ * Bags are not directly instantiated - package helper classes (Filler, Loader)
+ * can create bags and serialize them to a compressed archive file (supported
  * formats zip or tgz) or be deserialized from same or a stream, 
  * abiding by the serialization recommendations of the specification.
  *
@@ -57,7 +43,7 @@ public class Bag {
     static final String ENCODING = "UTF-8";
     static final String CS_ALGO = "MD5";
     static final String BAGIT_VSN = "0.97";
-    static final String LIB_VSN = "0.1";
+    static final String LIB_VSN = "0.2";
     static final String DFLT_FMT = "zip";
     static final String TGZIP_FMT = "tgz";
     static final String SPACER = "  ";
@@ -92,7 +78,7 @@ public class Bag {
         private String mdName;
 
         private MetadataName(String name) {
-        	  mdName = name;
+            mdName = name;
         }
 
         public String getName() {
@@ -101,7 +87,7 @@ public class Bag {
     }
 
     // directory root of bag
-    private final File baseDir;
+    private final Path baseDir;
 
     // allow serialization, etc of bag
     private final boolean sealed;
@@ -114,9 +100,9 @@ public class Bag {
      *
      * @throws IOException
      */
-    Bag(File baseDir, boolean sealed) throws IOException {
-    	this.baseDir = baseDir;
-    	this.sealed = sealed;
+    Bag(Path baseDir, boolean sealed) throws IOException {
+        this.baseDir = baseDir;
+        this.sealed = sealed;
     }
 
     /**
@@ -143,7 +129,7 @@ public class Bag {
      * @return name the name of the bag
      */
     public String bagName() {
-        return baseDir.getName();
+        return baseDir.getFileName().toString();
     }
 
     /**
@@ -151,7 +137,7 @@ public class Bag {
      *
      * @return algorithm the checksum algorithm
      */
-    public String csAlgorithm() {
+    public String csAlgorithm() throws IOException {
         return csAlgorithm(baseDir);
     }
 
@@ -162,38 +148,40 @@ public class Bag {
      */
     public boolean isComplete() throws IOException {
         // no fetch.txt?
-        if (bagFile(REF_FILE).exists()) return false;
+        if (Files.exists(bagFile(REF_FILE))) return false;
         // mandatory files present?
-        if (! (bagFile(DECL_FILE).exists() &&
-               bagFile(DATA_DIR).isDirectory())) return false;
+        if (! (Files.exists(bagFile(DECL_FILE)) &&
+               Files.isDirectory(bagFile(DATA_DIR)))) return false;
         // payload files map?
         Map<String, String> payloads = payloadManifest();
         // # payload files and # manifest entries must agree
         if (fileCount(bagFile(DATA_DIR)) != payloads.size()) return false;
         // files themselves must match also
         for (String path : payloads.keySet()) {
-            if (path.startsWith(DATA_DIR) && ! bagFile(path).exists()) return false;
+            if (path.startsWith(DATA_DIR) && Files.notExists(bagFile(path))) return false;
         }
         // same drill for tag files
         Map<String, String> tags = tagManifest();
         // # tag files and # manifest entries must agree
         // tag files consist of any top-level files except:
         // tagmanifest itself, and the payload directory.
-        File[] topTags = baseDir.listFiles(new FileFilter() { 
-            public boolean accept(File file) { 
-                String name = file.getName();
+        DirectoryStream.Filter<Path> filter = new DirectoryStream.Filter<Path>() {
+            public boolean accept(Path file) throws IOException {
+                String name = file.getFileName().toString();
                 return ! (name.startsWith(TAGMANIF_FILE) || name.startsWith(DATA_DIR));
             }
-        });
+        };
         int tagCount = 0;
-        for (File tag : topTags) {
-            if (tag.isDirectory()) tagCount += fileCount(tag);
-            else tagCount++;
-        }
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(baseDir, filter)) {
+            for (Path tag : stream) {
+                if (Files.isDirectory(tag)) tagCount += fileCount(tag);
+                else tagCount++;
+            }
+        } 
         if (tagCount != tags.size()) return false;
         // files themselves must match also
         for (String path : tags.keySet()) {
-            if (! bagFile(path).exists()) return false;
+            if (Files.notExists(bagFile(path))) return false;
         }
         return true;
     }
@@ -234,12 +222,12 @@ public class Bag {
      * @param relPath the relative path of the file from the data root directory
      * @return the payload file, or null if no file at the specified path
      */
-    public File payloadFile(String relPath) throws IOException, IllegalAccessException {
+    public Path payloadFile(String relPath) throws IOException, IllegalAccessException {
         if (sealed) {
             throw new IllegalAccessException("Sealed Bag: no file access allowed");
         }
-        File dFile = dataFile(relPath);
-        return dFile.exists() ? dFile : null;
+        Path payload = dataFile(relPath);
+        return Files.exists(payload) ? payload : null;
     }
 
     /**
@@ -249,8 +237,8 @@ public class Bag {
      * @return in InputStream, or null if no file at the specified path
      */
     public InputStream payloadStream(String relPath) throws IOException {
-        File dFile = dataFile(relPath);
-        return dFile.exists() ? new FileInputStream(dFile) : null;
+        Path payload = dataFile(relPath);
+        return Files.exists(payload) ? Files.newInputStream(payload) : null;
     }
 
     /**
@@ -267,14 +255,14 @@ public class Bag {
      * Returns a tag file for the passed tag relative path name
      *
      * @param relPath the relative path of the file from the bag root directory
-     * @return tagfile the tag file, or null if no file at the specified path
+     * @return tagfile the tag file path, or null if no file at the specified path
      */
-    public File tagFile(String relPath) throws IOException, IllegalAccessException {
+    public Path tagFile(String relPath) throws IOException, IllegalAccessException {
         if (sealed) {
             throw new IllegalAccessException("Sealed Bag: no file access allowed");
         }
-        File tFile = bagFile(relPath);
-        return tFile.exists() ? tFile : null;
+        Path tagFile = bagFile(relPath);
+        return Files.exists(tagFile) ? tagFile : null;
     }
 
     /**
@@ -284,8 +272,8 @@ public class Bag {
      * @return in InputStream, or null if no file at the specified path
      */
     public InputStream tagStream(String relPath) throws IOException {
-        File tFile = bagFile(relPath);
-        return tFile.exists() ? new FileInputStream(tFile) : null;
+        Path tagFile = bagFile(relPath);
+        return Files.exists(tagFile) ? Files.newInputStream(tagFile) : null;
     }
 
     /**
@@ -320,31 +308,31 @@ public class Bag {
      */
     public List<String> property(String relPath, String name) throws IOException {
         Map<String, List<String>> mdSet = mdCache.get(relPath);
-    	if (mdSet == null) {
-    	    synchronized (mdCache) {
-    	        mdSet = new HashMap<>();
-                FlatReader reader = new FlatReader(bagFile(relPath));
-                String propName = null;
-                StringBuilder valSb = new StringBuilder();
-                String line = null;
-                while ((line = reader.readLine()) != null) {
-                    // if line does not start with spacer, it is a new property
-                    if (! line.startsWith(SPACER)) {
-                        // write pendng data if present
-                        if (propName != null) {
-                            addProp(propName, valSb.toString(), mdSet);
-                            valSb = new StringBuilder();
+        if (mdSet == null) {
+            synchronized (mdCache) {
+                mdSet = new HashMap<>();
+                try (BufferedReader reader = Files.newBufferedReader(bagFile(relPath), StandardCharsets.UTF_8)) {
+                    String propName = null;
+                    StringBuilder valSb = new StringBuilder();
+                    String line = null;
+                    while ((line = reader.readLine()) != null) {
+                        // if line does not start with spacer, it is a new property
+                        if (! line.startsWith(SPACER)) {
+                            // write pendng data if present
+                            if (propName != null) {
+                                addProp(propName, valSb.toString(), mdSet);
+                                valSb = new StringBuilder();
+                            }
+                            int split = line.indexOf(":");
+                            propName = line.substring(0, split);
+                            valSb.append(line.substring(split + 1).trim());
+                        } else {
+                            valSb.append(line.substring(SPACER.length()));
                         }
-                        int split = line.indexOf(":");
-                        propName = line.substring(0, split);
-                        valSb.append(line.substring(split + 1).trim());
-                    } else {
-                        valSb.append(line.substring(SPACER.length()));
                     }
+                    addProp(propName, valSb.toString(), mdSet);
+                    mdCache.put(relPath, mdSet);
                 }
-                reader.close();
-                addProp(propName, valSb.toString(), mdSet);
-                mdCache.put(relPath, mdSet);
             }
         }
         return mdSet.get(name);
@@ -382,26 +370,28 @@ public class Bag {
      */
     public Map<String, String> manifest(String relPath) throws IOException {
         Map<String, String> mfMap = new HashMap<>();
-        FlatReader fr = new FlatReader(bagFile(relPath));
-        String line = null;
-        while((line = fr.readLine()) != null) {
-            String[] parts = line.split(" ");
-            mfMap.put(parts[1], parts[0]);
+        try (BufferedReader reader = Files.newBufferedReader(bagFile(relPath), StandardCharsets.UTF_8)) {
+            String line = null;
+            while((line = reader.readLine()) != null) {
+                String[] parts = line.split(" ");
+                mfMap.put(parts[1], parts[0]);
+            }
         }
-        fr.close();
         return mfMap;
     }
 
     // count of files in a directory, including subdirectory files (but not the subdir itself)
-    private int fileCount(File dir) throws IOException {
+    private int fileCount(Path dir) throws IOException {
         int count = 0;
-        for (File file : dir.listFiles()) {
-            if (file.isDirectory()) {
-                count += fileCount(file);
-            } else {
-                count++;
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {
+            for (Path file : stream) {
+                if (Files.isDirectory(file)) {
+                    count += fileCount(file);
+                } else {
+                    count++;
+                }
             }
-        }
+        } 
         return count;
     }
 
@@ -414,19 +404,19 @@ public class Bag {
         vals.add(value.trim());
     }
 
-    private File dataFile(String name) {
+    private Path dataFile(String name) throws IOException {
         // all user-defined files live in payload area - ie. under 'data'
-        File dataFile = new File(bagFile(DATA_DIR), name);
+        Path dataFile = bagFile(DATA_DIR).resolve(name);
         // create needed dirs
-        File parentFile = dataFile.getParentFile();
-        if (! parentFile.isDirectory()) {
-            parentFile.mkdirs();
+        Path parentFile = dataFile.getParent();
+        if (! Files.isDirectory(parentFile)) {
+            Files.createDirectories(parentFile);
         }
         return dataFile;
     }
 
-    private File bagFile(String name) {
-        return new File(baseDir, name);
+    private Path bagFile(String name) {
+        return baseDir.resolve(name);
     }
 
     private boolean validateFile(InputStream is, String expectedChecksum, String csAlg) throws IOException {
@@ -447,46 +437,31 @@ public class Bag {
         }
     }
 
-    private static class FlatReader {
-        private BufferedReader reader = null;
-
-        private FlatReader(File file) throws IOException {
-            reader = new BufferedReader(new FileReader(file));
-        }
-
-        public String readLine() throws IOException {
-            return reader.readLine();
-        }
-
-        public void close() throws IOException {
-            reader.close();
-        }
-    }
-
-    static Map<String, String> payloadRefs(File refFile) throws IOException {
+    static Map<String, String> payloadRefs(Path refFile) throws IOException {
         Map<String, String> refMap = new HashMap<>();
-        if (refFile.exists()) {
-            FlatReader fr = new FlatReader(refFile);
-            String line = null;
-            while((line = fr.readLine()) != null) {
-                String[] parts = line.split(" ");
-                refMap.put(parts[2], parts[0]);
+        if (Files.exists(refFile)) {
+            try (BufferedReader reader = Files.newBufferedReader(refFile, StandardCharsets.UTF_8)) {
+                String line = null;
+                while((line = reader.readLine()) != null) {
+                    String[] parts = line.split(" ");
+                    refMap.put(parts[2], parts[0]);
+                }
             }
-            fr.close();
         }
         return refMap;
     }
 
-    static String csAlgorithm(File base) {
+    static String csAlgorithm(Path base) throws IOException {
         // determine checksum in use from the manifest file name
-        String[] manNames = base.list(new FilenameFilter() { 
-            public boolean accept(File dir, String name) { 
-                return name.startsWith(MANIF_FILE);
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(base, MANIF_FILE + "*")) {
+            for (Path manFile : stream) {
+                // extract algorithm from filename
+                String fileName = manFile.getFileName().toString();
+                return fileName.substring(MANIF_FILE.length(), fileName.lastIndexOf("."));
             }
-        });
-        // any manifest files?
-        return (manNames.length == 0) ? null :
-                manNames[0].substring(MANIF_FILE.length(), manNames[0].lastIndexOf("."));
+        } 
+        // if no any manifest files, return null
+        return null;
     }
 
     private static final char[] HEX_CHARS = "0123456789abcdef".toCharArray();
@@ -507,8 +482,7 @@ public class Bag {
         if (size < 1000) {
             return size + " " + tags[index];
         } else {
-        	  return scaledSize(size / 1000, index + 1);
+            return scaledSize(size / 1000, index + 1);
         }
     }
-
 }

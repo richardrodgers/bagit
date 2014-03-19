@@ -1,21 +1,21 @@
 /**
- * Copyright 2013 MIT Libraries
+ * Copyright 2013, 2014 MIT Libraries
  * Licensed under: http://www.apache.org/licenses/LICENSE-2.0
  */
 
 package edu.mit.lib.bagit;
 
 import java.io.BufferedOutputStream;
-import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileFilter;
-import java.io.FilenameFilter;
 import java.io.FileOutputStream;
+import java.io.FilterInputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.DigestInputStream;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
@@ -50,7 +50,7 @@ import static edu.mit.lib.bagit.Bag.*;
 public class Filler {
 
     // directory root of bag
-    private File base;
+    private Path base;
     // checksum algorithm
     private String csAlg;
     // automatic metadata generation flag
@@ -68,6 +68,8 @@ public class Filler {
     private Map<String, BagOutputStream> streams;
     // has bag been built?
     private boolean built;
+    // transient bag?
+    private boolean transientBag;
 
     /**
      * Returns a new Filler (bag builder) instance using
@@ -85,7 +87,7 @@ public class Filler {
      *
      * @param base the base directory in which to construct the bag
      */
-    public Filler(File base) throws IOException {
+    public Filler(Path base) throws IOException {
         this(base, null);
     }
 
@@ -96,12 +98,17 @@ public class Filler {
      * @param base directory for bag - if null, create temporary directory
      * @param csAlgorithm checksum algorithm string - if null use default
      */
-    public Filler(File base, String csAlgorithm) throws IOException {
-        this.base = (base != null) ? base : Files.createTempDirectory("bag").toFile();
+    public Filler(Path base, String csAlgorithm) throws IOException {
+        if (base != null) {
+            this.base = base;
+        } else { 
+            this.base = Files.createTempDirectory("bag");
+            transientBag = true;
+        }
         csAlg = (csAlgorithm != null) ? csAlgorithm : CS_ALGO;
-        File dFile = bagFile(DATA_DIR);
-        if (! dFile.exists()) {
-           	dFile.mkdirs();
+        Path dirPath = bagFile(DATA_DIR);
+        if (Files.notExists(dirPath)) {
+            Files.createDirectories(dirPath);
         } 
         // prepare manifest writers
         String sfx = csAlg.toLowerCase() + ".txt";
@@ -114,23 +121,23 @@ public class Filler {
     private void buildBag() throws IOException {
         if (built) return;
         // if auto-generating metadata, do so
-    	if (autogen) {
-    	    metadata(MetadataName.BAGGING_DATE, new SimpleDateFormat("yyyy-MM-dd").format(new Date()));
-    	  	metadata(MetadataName.BAG_SIZE, scaledSize(payloadSize, 0));
-    	  	metadata(MetadataName.PAYLOAD_OXNUM, String.valueOf(payloadSize) + "." + String.valueOf(payloadCount));
-    	  	metadata("Bag-Software-Agent", "MIT BagIt Lib v:" + LIB_VSN);
-    	}
-    	// close all optional writers' tag files
-    	Iterator<String> wIter = writers.keySet().iterator();
-    	while (wIter.hasNext()) {
-    	    getWriter(wIter.next()).close();
-    	}
+        if (autogen) {
+            metadata(MetadataName.BAGGING_DATE, new SimpleDateFormat("yyyy-MM-dd").format(new Date()));
+            metadata(MetadataName.BAG_SIZE, scaledSize(payloadSize, 0));
+            metadata(MetadataName.PAYLOAD_OXNUM, String.valueOf(payloadSize) + "." + String.valueOf(payloadCount));
+            metadata("Bag-Software-Agent", "MIT BagIt Lib v:" + LIB_VSN);
+        }
+        // close all optional writers' tag files
+        Iterator<String> wIter = writers.keySet().iterator();
+        while (wIter.hasNext()) {
+            getWriter(wIter.next()).close();
+        }
         // close all optional output streams
         Iterator<String> sIter = streams.keySet().iterator();
         while (sIter.hasNext()) {
             getStream(null, sIter.next()).close();
         }
-    	// close the manifest file
+        // close the manifest file
         manWriter.close();
         // write out bagit declaration file
         FlatWriter fwriter = new FlatWriter(bagFile(DECL_FILE), null, tagWriter);
@@ -147,19 +154,19 @@ public class Filler {
      * Normally generated: Bagging-Date, Bag-Size, Payload-Oxnum, Bag-Software-Agent
      */
     public Filler noAutoGen() {
-    	autogen = false;
-    	return this;
+        autogen = false;
+        return this;
     }
 
     /**
      * Adds a file to the payload at the root of the data
      * directory tree - convenience method when no payload hierarchy needed.
      *
-     * @param file the file to add to the payload
+     * @param topFile the file to add to the payload
      * @return Filler this Filler
      */
-    public Filler payload(File file) throws IOException {
-        return payload(file.getName(), file);
+    public Filler payload(Path topFile) throws IOException {
+        return payload(topFile.getFileName().toString(), topFile);
     }
 
     /**
@@ -167,11 +174,11 @@ public class Filler {
      * path from the root of the data directory tree.
      *
      * @param relPath the relative path of the file
-     * @param file the file to add to the payload
+     * @param file the file path to add to the payload
      * @return Filler this Filler
      */
-    public Filler payload(String relPath, File file) throws IOException {
-        return payload(relPath, new FileInputStream(file));
+    public Filler payload(String relPath, Path file) throws IOException {
+        return payload(relPath, Files.newInputStream(file));
     }
 
     /**
@@ -183,13 +190,13 @@ public class Filler {
      * @return Filler this Filler
      */
     public Filler payload(String relPath, InputStream is) throws IOException {
-        if (dataFile(relPath).exists()) {
+        if (Files.exists(dataFile(relPath))) {
             throw new IllegalStateException("Payload file already exists at: " + relPath);
         }
         // wrap stream in digest stream
         try (DigestInputStream dis = 
             new DigestInputStream(is, MessageDigest.getInstance(csAlg))) {
-            payloadSize += Files.copy(dis, dataFile(relPath).toPath());
+            payloadSize += Files.copy(dis, dataFile(relPath));
             payloadCount++;
             // record checksum
             manWriter.writeLine(toHex(dis.getMessageDigest().digest()) + " " + DATA_PATH + relPath);
@@ -223,7 +230,7 @@ public class Filler {
      * @return stream an output stream to payload file
      */
     public OutputStream payloadStream(String relPath) throws IOException {
-        if (dataFile(relPath).exists()) {
+        if (Files.exists(dataFile(relPath))) {
             throw new IllegalStateException("Payload file already exists at: " + relPath);
         }
         return getStream(dataFile(relPath), relPath);
@@ -234,11 +241,11 @@ public class Filler {
      * path from the root of the bag directory tree.
      *
      * @param relPath the relative path of the file
-     * @param file the tag file to add
+     * @param file the path of the tag file to add
      * @return Filler this Filler
      */
-    public Filler tag(String relPath, File file) throws IOException {
-        return tag(relPath, new FileInputStream(file));
+    public Filler tag(String relPath, Path file) throws IOException {
+        return tag(relPath, Files.newInputStream(file));
     }
 
     /**
@@ -250,17 +257,17 @@ public class Filler {
      * @return Filler this Filler
      */
     public Filler tag(String relPath, InputStream is) throws IOException {
-    	// make sure tag files not written to payload directory
-    	if (relPath.startsWith(DATA_PATH)) {
-    	    throw new IOException("Tag files not allowed in paylod directory");
-    	}
-        if (bagFile(relPath).exists()) {
+        // make sure tag files not written to payload directory
+        if (relPath.startsWith(DATA_PATH)) {
+            throw new IOException("Tag files not allowed in paylod directory");
+        }
+        if (Files.exists(bagFile(relPath))) {
             throw new IllegalStateException("Tag file already exists at: " + relPath);
         }
         // wrap stream in digest stream
         try (DigestInputStream dis = 
              new DigestInputStream(is, MessageDigest.getInstance(csAlg))) {
-            Files.copy(dis, tagFile(relPath).toPath());
+            Files.copy(dis, tagFile(relPath));
             // record checksum
             tagWriter.writeLine(toHex(dis.getMessageDigest().digest()) + " " + relPath);
         } catch (NoSuchAlgorithmException nsaE) {
@@ -276,7 +283,7 @@ public class Filler {
      * @return stream an output stream to the tag file
      */
     public OutputStream tagStream(String relPath) throws IOException {
-        if (tagFile(relPath).exists()) {
+        if (Files.exists(tagFile(relPath))) {
             throw new IllegalStateException("Tag file already exists at: " + relPath);
         }
         return getStream(tagFile(relPath), relPath);
@@ -318,33 +325,33 @@ public class Filler {
         return this;
     }
 
-    private File dataFile(String name) {
+    private Path dataFile(String name) throws IOException {
         // all user-defined files live in payload area - ie. under 'data'
-        File dataFile = new File(bagFile(DATA_DIR), name);
+        Path dataFile = bagFile(DATA_DIR).resolve(name);
         // create needed dirs
-        File parentFile = dataFile.getParentFile();
-        if (! parentFile.isDirectory()) {
-            parentFile.mkdirs();
+        Path parentFile = dataFile.getParent();
+        if (! Files.isDirectory(parentFile)) {
+            Files.createDirectories(parentFile);
         }
         return dataFile;
     }
 
-    private File tagFile(String name) {
+    private Path tagFile(String name) throws IOException {
         // all user-defined tag files live anywhere in the bag
-        File tagFile = bagFile(name);
+        Path tagFile = bagFile(name);
         // create needed dirs
-        File parentFile = tagFile.getParentFile();
-        if (! parentFile.isDirectory()) {
-            parentFile.mkdirs();
+        Path parentFile = tagFile.getParent();
+        if (! Files.isDirectory(parentFile)) {
+            Files.createDirectories(parentFile);
         }
         return tagFile;
     }
 
-    private File bagFile(String name) {
-        return new File(base, name);
+    private Path bagFile(String name) {
+        return base.resolve(name);
     }
 
-    private FlatWriter getWriter(String name) throws IOException {
+    private synchronized FlatWriter getWriter(String name) throws IOException {
         FlatWriter writer = writers.get(name);
         if (writer == null) {
             writer = new FlatWriter(bagFile(name), null, tagWriter);
@@ -353,10 +360,10 @@ public class Filler {
         return writer;
     }
 
-    private BagOutputStream getStream(File file, String name) throws IOException {
+    private BagOutputStream getStream(Path path, String name) throws IOException {
         BagOutputStream stream = streams.get(name);
         if (stream == null) {
-            stream = new BagOutputStream(file, name, tagWriter);
+            stream = new BagOutputStream(path, name, tagWriter);
             streams.put(name, stream);
         }
         return stream;
@@ -364,7 +371,7 @@ public class Filler {
 
     class FlatWriter extends BagOutputStream {
     
-        private FlatWriter(File file, String brPath, FlatWriter tailWriter) throws IOException {
+        private FlatWriter(Path file, String brPath, FlatWriter tailWriter) throws IOException {
             super(file, brPath, tailWriter);
         }
 
@@ -395,11 +402,11 @@ public class Filler {
         private final DigestOutputStream dout;
         private final FlatWriter tailWriter;
 
-        private BagOutputStream(File file, String relPath, FlatWriter tailWriter) throws IOException {
+        private BagOutputStream(Path file, String relPath, FlatWriter tailWriter) throws IOException {
             try {
-                out = new FileOutputStream(file);
+                out = Files.newOutputStream(file);
                 dout = new DigestOutputStream(out, MessageDigest.getInstance(csAlg));
-                this.relPath = (relPath != null) ? relPath : file.getName();
+                this.relPath = (relPath != null) ? relPath : file.getFileName().toString();
                 this.tailWriter = tailWriter;
             } catch (NoSuchAlgorithmException nsae) {
                 throw new IOException("no such algorithm: " + csAlg);
@@ -422,11 +429,11 @@ public class Filler {
     }
 
     /**
-     * Returns backing bag directory file.
+     * Returns backing bag directory path.
      *
-     * @return dir the bag directory
+     * @return dir the bag directory path
      */
-    public File toDirectory() throws IOException {
+    public Path toDirectory() throws IOException {
         buildBag();
         return base;
     }
@@ -434,9 +441,9 @@ public class Filler {
     /**
      * Returns bag serialized as an archive file using default packaging (zip archive).
      *
-     * @return file the bag archive package
+     * @return path the bag archive package path
      */
-    public File toPackage() throws IOException {
+    public Path toPackage() throws IOException {
         return toPackage(DFLT_FMT);
     }
 
@@ -445,14 +452,15 @@ public class Filler {
      * Supported formats: 'zip' - zip archive, 'tgz' - gzip compressed tar archive
      *
      * @param format the package format ('zip', or 'tgz')
-     * @return file the bag archive package
+     * @return path the bag archive package path
      */
-    public File toPackage(String format) throws IOException {
+    public Path toPackage(String format) throws IOException {
         return deflate(format);
     }
 
-     /**
+    /**
      * Returns bag serialized as an IO stream using default packaging (zip archive).
+     * Bag is deleted when stream closed if temporary bag location used.
      *
      * @return file the bag archive package
      */
@@ -462,92 +470,115 @@ public class Filler {
 
     /**
      * Returns bag serialized as an IO stream using passed packaging format.
+     * Bag is deleted when stream closed if temporary bag location used.
      * Supported formats: 'zip' - zip archive, 'tgz' - gzip compressed tar archive
      *
      * @param format the package format ('zip', or 'tgz')
      * @return file the bag archive package
      */
     public InputStream toStream(String format) throws IOException {
-        return new FileInputStream(deflate(format));
+        Path pkgFile = deflate(format);
+        if (transientBag) {
+            return new CleanupInputStream(Files.newInputStream(pkgFile), pkgFile); 
+        } else {
+            return Files.newInputStream(pkgFile);
+        }
+    }
+
+    class CleanupInputStream extends FilterInputStream {
+
+        private Path file;
+
+        public CleanupInputStream(InputStream in, Path file) {
+            super(in);
+            this.file = file;
+        } 
+
+        @Override
+        public void close() throws IOException {
+            super.close();
+            Files.delete(file);
+        }
     }
 
     private void empty() throws IOException {
         deleteDir(base);
-        base.delete();
+        Files.delete(base);
     }
 
-    private void deleteDir(File dirFile) {
-        for (File file : dirFile.listFiles()) {
-            if (file.isDirectory()) {
-                deleteDir(file);
+    private void deleteDir(Path dirFile) {
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(dirFile)) {
+            for (Path path : stream) {
+                if (Files.isDirectory(path)) {
+                    deleteDir(path);
+                }
+                Files.delete(path);
             }
-            file.delete();
-        }
+        } catch (IOException ioE) {}
     }
     
-    private File deflate(String format) throws IOException {
-        // deflate this bag inplace (in current directory) using given packaging format
+    private Path deflate(String format) throws IOException {
+        // deflate this bag in situ (in current directory) using given packaging format
         buildBag();
-        File pkgFile = deflate(base.getParent(), format);
+        Path pkgFile = base.getParent().resolve(base.getFileName().toString() + "." + format);
+        deflate(Files.newOutputStream(pkgFile), format);
         // remove base
         empty();
         return pkgFile;        
     }
     
-    private File deflate(String destDir, String format) throws IOException {
-        File defFile = new File(destDir, base.getName() + "." + format);
-        deflate(new FileOutputStream(defFile), format);
-        return defFile;
-    }
-    
     private void deflate(OutputStream out, String format) throws IOException {
         switch(format) {
             case "zip":
-                ZipOutputStream zout = new ZipOutputStream(
-                                       new BufferedOutputStream(out));
-                fillZip(base, base.getName(), zout);
-                zout.close();
+                try (ZipOutputStream zout = new ZipOutputStream(
+                                            new BufferedOutputStream(out))) {
+                    fillZip(base, base.getFileName().toString(), zout);
+                }
                 break;
             case "tgz": 
-                TarArchiveOutputStream tout = new TarArchiveOutputStream(
-                                              new BufferedOutputStream(
-                                              new GzipCompressorOutputStream(out)));
-                fillArchive(base, base.getName(), tout);
-                tout.close();
+                try (TarArchiveOutputStream tout = new TarArchiveOutputStream(
+                                                   new BufferedOutputStream(
+                                                   new GzipCompressorOutputStream(out)))) {
+                    fillArchive(base, base.getFileName().toString(), tout);
+                }
                 break;
             default:
                 throw new IOException("Unsupported package format: " + format);
         }
     }
     
-    private void fillArchive(File dirFile, String relBase, ArchiveOutputStream out) throws IOException {
-        for (File file : dirFile.listFiles()) {
-            String relPath = relBase + File.separator + file.getName();
-            if (file.isDirectory()) {
-                fillArchive(file, relPath, out);
-            } else {
-                TarArchiveEntry entry = new TarArchiveEntry(relPath);
-                entry.setSize(file.length());
-                entry.setModTime(0L);
-                out.putArchiveEntry(entry);
-                Files.copy(file.toPath(), out);
-                out.closeArchiveEntry();
+    private void fillArchive(Path dirFile, String relBase, ArchiveOutputStream out) throws IOException {
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(dirFile)) {
+            for (Path file : stream) {
+                String relPath = relBase + '/' + file.getFileName().toString();
+                if (Files.isDirectory(file)) {
+                    fillArchive(file, relPath, out);
+                } else {
+                    TarArchiveEntry entry = new TarArchiveEntry(relPath);
+                    entry.setSize(Files.size(file));
+                    entry.setModTime(0L);
+                    out.putArchiveEntry(entry);
+                    Files.copy(file, out);
+                    out.closeArchiveEntry();
+                }
             }
-        }
+        } 
     }
 
-    private void fillZip(File dirFile, String relBase, ZipOutputStream zout) throws IOException {
-        for (File file : dirFile.listFiles()) {
-            String relPath = relBase + File.separator + file.getName();
-            if (file.isDirectory()) {
-                fillZip(file, relPath, zout);
-            } else {
-                ZipEntry entry = new ZipEntry(relPath);
-                entry.setTime(0L);
-                zout.putNextEntry(entry);
-                Files.copy(file.toPath(), zout);
-                zout.closeEntry();
+    private void fillZip(Path dirFile, String relBase, ZipOutputStream zout) throws IOException {
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(dirFile)) {
+            for (Path file : stream) {
+                String relPath = relBase + '/' + file.getFileName().toString();
+                if (Files.isDirectory(file)) {
+                    fillZip(file, relPath, zout);
+                } else {
+                    ZipEntry entry = new ZipEntry(relPath);
+                    entry.setTime(0L);
+                    zout.putNextEntry(entry);
+                    Files.copy(file, zout);
+                    zout.closeEntry();
+                }
             }
-        }
+        } 
     }
 }

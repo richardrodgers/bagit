@@ -1,13 +1,14 @@
 /**
- * Copyright 2013 MIT Libraries
+ * Copyright 2013, 2014 MIT Libraries
  * Licensed under: http://www.apache.org/licenses/LICENSE-2.0
  */
 
 package edu.mit.lib.bagit;
 
-import java.io.File;
 import java.io.IOException;
 import java.net.URL;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.HashMap;
@@ -55,11 +56,12 @@ public class Bagger {
             i += 2;
         }
         // execute command if recognized
+        Path bagName = Paths.get(args[1]);
         switch(args[0]) {
-            case "fill" : bagger.fill(new File(args[1])); break;
-            case "plug" : bagger.plug(new File(args[1])); break; 
-            case "complete" : bagger.complete(new File(args[1])); break; 
-            case "validate" : bagger.validate(new File(args[1])); break; 
+            case "fill" : bagger.fill(bagName); break;
+            case "plug" : bagger.plug(bagName); break; 
+            case "complete" : bagger.complete(bagName); break; 
+            case "validate" : bagger.validate(bagName); break; 
             default: System.out.println("Unknown command: '" + args[0] + "'"); usage();
         }
     }
@@ -90,7 +92,7 @@ public class Bagger {
 
     private Bagger() {}
 
-    private void fill(File baseDir) throws IOException {
+    private void fill(Path baseDir) throws IOException {
         Filler filler = new Filler(baseDir, csAlg);
         if (optFlags.contains("nag")) {
             filler.noAutoGen();
@@ -98,9 +100,9 @@ public class Bagger {
         for (String payload : payloads) {
             if (payload.indexOf("=") > 0) {
                 String[] parts = payload.split("=");
-                filler.payload(parts[0], new File(parts[1]));
+                filler.payload(parts[0], Paths.get(parts[1]));
             } else {
-                filler.payload(payload, new File(payload));
+                filler.payload(payload, Paths.get(payload));
             }
         }
         for (String reference : references) {
@@ -110,28 +112,28 @@ public class Bagger {
         for (String tag : tags) {
             if (tag.indexOf("=") > 0) {
                 String[] parts = tag.split("=");
-                filler.tag(parts[0], new File(parts[1]));
+                filler.tag(parts[0], Paths.get(parts[1]));
             } else {
-                filler.tag(tag, new File(tag));
+                filler.tag(tag, Paths.get(tag));
             }
         }
         for (String statement : statements) {
             String[] parts = statement.split("=");
             filler.metadata(parts[0], parts[1]);
         }
-        File bagFile = null;
+        Path bagPath = null;
         if (archFmt.equals("directory")) {
-            bagFile = filler.toDirectory();
+            bagPath = filler.toDirectory();
         } else {
-            bagFile = filler.toPackage(archFmt);
+            bagPath = filler.toPackage(archFmt);
         }
         if (verbosityLevel > 0) {
-            message(bagFile.getName(), true, "created");
+            message(bagPath.getFileName().toString(), true, "created");
         }
     }
 
-    private void plug(File bagFile) throws IOException {
-        Loader loader = new Loader(bagFile);
+    private void plug(Path bagPath) throws IOException {
+        Loader loader = new Loader(bagPath);
         Map<String, String> holeMap;
         if (references.size() > 0) {
             // only process holes specified
@@ -152,24 +154,24 @@ public class Bagger {
             loader.resolveRef(relPath, new URL(holeMap.get(relPath)).openStream());
         }
         if (verbosityLevel > 0) {
-            System.out.println("Filled " + holeMap.size() + " holes in bag '" + bagFile.getName() + "'");
+            System.out.println("Filled " + holeMap.size() + " holes in bag '" + bagPath.getFileName().toString() + "'");
         }
         // must load bag to update contents
         loader.load();
     }
 
-    private void complete(File bagFile) throws IOException {
-        boolean complete = new Loader(bagFile).load().isComplete();
+    private void complete(Path bagPath) throws IOException {
+        boolean complete = new Loader(bagPath).load().isComplete();
         if (verbosityLevel > 0) {
-           message(bagFile.getName(), complete, "complete");
+           message(bagPath.getFileName().toString(), complete, "complete");
         }
         System.exit(complete ? 0 : -1);
     }
 
-    private void validate(File bagFile) throws IOException {
-        boolean valid = new Loader(bagFile).load().isValid();
+    private void validate(Path bagPath) throws IOException {
+        boolean valid = new Loader(bagPath).load().isValid();
         if (verbosityLevel > 0) {
-            message(bagFile.getName(), valid, "valid");
+            message(bagPath.getFileName().toString(), valid, "valid");
         }
         System.exit(valid ? 0 : -1);
     }
@@ -181,5 +183,4 @@ public class Bagger {
         sb.append(value);
         System.out.println(sb.toString());
     }
-
 }

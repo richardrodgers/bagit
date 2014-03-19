@@ -1,19 +1,19 @@
 /**
- * Copyright 2013 MIT Libraries
+ * Copyright 2013, 2014 MIT Libraries
  * Licensed under: http://www.apache.org/licenses/LICENSE-2.0
  */
 
 package edu.mit.lib.bagit;
 
 import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.OpenOption;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.security.DigestInputStream;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
@@ -43,7 +43,7 @@ import static edu.mit.lib.bagit.Bag.*;
  */
 public class Loader {
     // base directory of bag
-    private File base;
+    private Path base;
     // checksum algorithm used in bag
     private String csAlg;
     // map of unresolved fetch.txt files
@@ -57,23 +57,23 @@ public class Loader {
      *
      * @param file the base directory or archive file from which to extract the bag
      */
-    public Loader(File file) throws IOException {
-        if (file == null || ! file.exists()) {
+    public Loader(Path file) throws IOException {
+        if (file == null || Files.notExists(file)) {
             throw new IOException("Missing or nonexistent bag file");
         }
-        // is it an archive file? If so, inflate into bag
-        String baseName = file.getName();
+        // is it an archive file? If so,inflate into bag
+        String baseName = file.getFileName().toString();
         int sfxIdx = baseName.lastIndexOf(".");
         String suffix = (sfxIdx != -1) ? baseName.substring(sfxIdx + 1) : null;
-        if (! file.isDirectory() && suffix != null && 
+        if (! Files.isDirectory(file) && suffix != null && 
             (suffix.equals(DFLT_FMT) || suffix.equals(TGZIP_FMT))) {
             String dirName = baseName.substring(0, sfxIdx);
-            base = new File(file.getParent(), dirName);
-            File dFile = new File(base, DATA_DIR);
-            dFile.mkdirs();
-            inflate(new FileInputStream(file), suffix);
+            base = file.getParent().resolve(dirName);
+            Path dFile = base.resolve(DATA_DIR);
+            Files.createDirectories(dFile);
+            inflate(Files.newInputStream(file), suffix);
             // remove archive original
-            file.delete();
+            Files.delete(file);
         } else {
             base = file;
         }
@@ -98,8 +98,8 @@ public class Loader {
      * @param in the input stream containing the serialized bag
      * @param format the expected serialization format
      */
-    public Loader(File base, InputStream in, String format) throws IOException {
-        this.base = (base != null) ? base : Files.createTempDirectory("bag").toFile();
+    public Loader(Path base, InputStream in, String format) throws IOException {
+        this.base = (base != null) ? base : Files.createTempDirectory("bag");
         inflate(in, format);
     }
 
@@ -108,7 +108,7 @@ public class Loader {
      *
      * @return algorithm the checksum algorithm
      */
-    public String csAlgorithm() {
+    public String csAlgorithm() throws IOException {
         if (csAlg == null) {
             csAlg = Bag.csAlgorithm(base); 
         }
@@ -140,54 +140,54 @@ public class Loader {
         if (manWriter != null) {
             manWriter.close();
             // Update fetch.txt - remove if all holes plugged, else filter
-            File refFile = bagFile(REF_FILE);
+            Path refFile = bagFile(REF_FILE);
             List<String> refLines = bufferFile(refFile);
             if (payloadRefMap.size() > 0) {
                 // now reconstruct fetch.txt filtering out those resolved
-                FileOutputStream refOut = new FileOutputStream(refFile);
-                for (String refline : refLines) {
-                    String[] parts = refline.split(" ");
-                    if (payloadRefMap.containsKey(parts[2])) {
-                        refOut.write(refline.getBytes(ENCODING));
-                    } 
+                try (OutputStream refOut = Files.newOutputStream(refFile)) {
+                    for (String refline : refLines) {
+                        String[] parts = refline.split(" ");
+                        if (payloadRefMap.containsKey(parts[2])) {
+                            refOut.write(refline.getBytes(ENCODING));
+                        } 
+                    }
                 }
-                refOut.close();
             }
             // update tagmanifest with new manifest checksum, fetch stuff
             String sfx = csAlgorithm() + ".txt";
-            File tagManFile = bagFile(TAGMANIF_FILE + sfx);
+            Path tagManFile = bagFile(TAGMANIF_FILE + sfx);
             List<String> tmLines = bufferFile(tagManFile);
             // now recompute manifest checksum
             String manCS = checksum(bagFile(MANIF_FILE + sfx), csAlgorithm());
             // likewise fetch.txt if it's still around
-            String fetchCS = refFile.exists() ? checksum(bagFile(MANIF_FILE + sfx), csAlgorithm()) : null;
+            String fetchCS = Files.exists(refFile) ? checksum(bagFile(MANIF_FILE + sfx), csAlgorithm()) : null;
             // recreate tagmanifest with new checksums
-            FileOutputStream tagManOut = new FileOutputStream(tagManFile);
-            for (String tline : tmLines) {
-                String[] parts = tline.split(" ");
-                if (parts[1].startsWith(MANIF_FILE)) {
-                    tagManOut.write((manCS + " " + MANIF_FILE + sfx + "\n").getBytes(ENCODING));
-                } else if (parts[1].startsWith(REF_FILE)) {
-                    if (fetchCS != null) {
-                        tagManOut.write((fetchCS + " " + REF_FILE + sfx + "\n").getBytes(ENCODING));
+            try (OutputStream tagManOut = Files.newOutputStream(tagManFile)) {
+                for (String tline : tmLines) {
+                    String[] parts = tline.split(" ");
+                    if (parts[1].startsWith(MANIF_FILE)) {
+                        tagManOut.write((manCS + " " + MANIF_FILE + sfx + "\n").getBytes(ENCODING));
+                    } else if (parts[1].startsWith(REF_FILE)) {
+                        if (fetchCS != null) {
+                            tagManOut.write((fetchCS + " " + REF_FILE + sfx + "\n").getBytes(ENCODING));
+                        }
+                    } else {
+                        tagManOut.write(tline.getBytes(ENCODING));
                     }
-                } else {
-                    tagManOut.write(tline.getBytes(ENCODING));
                 }
             }
-            tagManOut.close();
         }
     }
 
-    private List<String> bufferFile(File file) throws IOException {
-        BufferedReader reader = new BufferedReader(new FileReader(file));
-        List<String> lines = new ArrayList<String>();
-        String line = null;
-        while((line = reader.readLine()) != null) {
-            lines.add(line + "\n");
+    private List<String> bufferFile(Path file) throws IOException {
+        List<String> lines = new ArrayList<>();
+        try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            String line = null;
+            while ((line = reader.readLine()) != null) {
+                lines.add(line + "\n");
+            }
         }
-        reader.close();
-        file.delete();
+        Files.delete(file);
         return lines;
     }
 
@@ -197,8 +197,8 @@ public class Loader {
      * @return refMap the map of payload files to fetch URLs
      */
     public Map<String, String> payloadRefs() throws IOException {
-        File refFile = bagFile(REF_FILE);
-        if (payloadRefMap.isEmpty() && refFile.exists()) {
+        Path refFile = bagFile(REF_FILE);
+        if (payloadRefMap.isEmpty() && Files.exists(refFile)) {
             // load initial data
             payloadRefMap.putAll(Bag.payloadRefs(refFile));
         }
@@ -216,13 +216,12 @@ public class Loader {
         if (! payloadRefMap.containsKey(relPath)) {
             throw new IOException ("Unknown payload reference: " + relPath);
         }
-        if (bagFile(relPath).exists()) {
+        if (Files.exists(bagFile(relPath))) {
             throw new IllegalStateException("Payload file already exists at: " + relPath);
         }
         // wrap stream in digest stream
-        try (DigestInputStream dis = 
-            new DigestInputStream(is, MessageDigest.getInstance(csAlgorithm()))) {
-            Files.copy(dis, bagFile(relPath).toPath());
+        try (DigestInputStream dis = new DigestInputStream(is, MessageDigest.getInstance(csAlgorithm()))) {
+            Files.copy(dis, bagFile(relPath));
             // record checksum
             manifestWriter().writeLine(toHex(dis.getMessageDigest().digest()) + " " + relPath);
             // remove from map
@@ -232,23 +231,23 @@ public class Loader {
         }
     }
 
-    private File bagFile(String name) {
-        return new File(base, name);
+    private Path bagFile(String name) {
+        return base.resolve(name);
     }
 
-    private File dataFile(String name) {
+    private Path dataFile(String name) throws IOException {
         // all user-defined files live in payload area - ie. under 'data'
-        File dataFile = new File(bagFile(DATA_DIR), name);
+        Path dataFile = bagFile(DATA_DIR).resolve(name);
         // create needed dirs
-        File parentFile = dataFile.getParentFile();
-        if (! parentFile.isDirectory()) {
-            parentFile.mkdirs();
+        Path parentFile = dataFile.getParent();
+        if (! Files.isDirectory(parentFile)) {
+            Files.createDirectories(parentFile);
         }
         return dataFile;
     }
 
     // lazy initialization of manifest writer
-    private LoaderWriter manifestWriter() throws IOException {
+    private synchronized LoaderWriter manifestWriter() throws IOException {
         if (manWriter == null) {
             String sfx = csAlgorithm().toLowerCase() + ".txt";
             manWriter = new LoaderWriter(bagFile(MANIF_FILE + sfx), null, true, null);
@@ -258,7 +257,7 @@ public class Loader {
 
     class LoaderWriter extends LoaderOutputStream {
     
-        private LoaderWriter(File file, String brPath, boolean append, LoaderWriter tailWriter) throws IOException {
+        private LoaderWriter(Path file, String brPath, boolean append, LoaderWriter tailWriter) throws IOException {
             super(file, brPath, append, tailWriter);
         }
 
@@ -275,11 +274,12 @@ public class Loader {
         private final DigestOutputStream dout;
         private final LoaderWriter tailWriter;
 
-        private LoaderOutputStream(File file, String relPath, boolean append, LoaderWriter tailWriter) throws IOException {
+        private LoaderOutputStream(Path file, String relPath, boolean append, LoaderWriter tailWriter) throws IOException {
+            OpenOption opt = append ? StandardOpenOption.APPEND : StandardOpenOption.READ;
             try {
-                out = new FileOutputStream(file, append);
+                out = Files.newOutputStream(file, opt);
                 dout = new DigestOutputStream(out, MessageDigest.getInstance(csAlg));
-                this.relPath = (relPath != null) ? relPath : file.getName();
+                this.relPath = (relPath != null) ? relPath : file.getFileName().toString();
                 this.tailWriter = tailWriter;
             } catch (NoSuchAlgorithmException nsae) {
                 throw new IOException("no such algorithm: " + csAlg);
@@ -305,36 +305,36 @@ public class Loader {
     private void inflate(InputStream in, String fmt) throws IOException {
         switch (fmt) {
             case "zip" :
-                ZipInputStream zin = new ZipInputStream(in);
-                ZipEntry entry = null;
-                while((entry = zin.getNextEntry()) != null) {
-                    File outFile = new File(base.getParent(), entry.getName());
-                    outFile.getParentFile().mkdirs();
-                    Files.copy(zin, outFile.toPath());
+                try (ZipInputStream zin = new ZipInputStream(in)) {
+                    ZipEntry entry = null;
+                    while((entry = zin.getNextEntry()) != null) {
+                        Path outFile = base.getParent().resolve(entry.getName());
+                        Files.createDirectories(outFile.getParent());
+                        Files.copy(zin, outFile);
+                    }
                 }
-                zin.close();
                 break;
             case "tgz" :
-                TarArchiveInputStream tin = new TarArchiveInputStream(
-                                            new GzipCompressorInputStream(in));
-                TarArchiveEntry tentry = null;
-                while((tentry = tin.getNextTarEntry()) != null) {
-                    File outFile = new File(base.getParent(), tentry.getName());
-                    outFile.getParentFile().mkdirs();
-                    Files.copy(tin, outFile.toPath());
+                try (TarArchiveInputStream tin = new TarArchiveInputStream(
+                                                 new GzipCompressorInputStream(in))) {
+                    TarArchiveEntry tentry = null;
+                    while((tentry = tin.getNextTarEntry()) != null) {
+                        Path outFile = base.getParent().resolve(tentry.getName());
+                        Files.createDirectories(outFile.getParent());
+                        Files.copy(tin, outFile);
+                    }
                 }
-                tin.close();
                 break;
             default:
                 throw new IOException("Unsupported archive format: " + fmt);                            
         }
     }
 
-    private String checksum(File file, String csAlg) throws IOException {
+    private String checksum(Path file, String csAlg) throws IOException {
         byte[] buf = new byte[2048];
         int num = 0;
         // wrap stream in digest stream
-        try (FileInputStream is = new FileInputStream(file);
+        try (InputStream is = Files.newInputStream(file);
              DigestInputStream dis = new DigestInputStream(is, MessageDigest.getInstance(csAlg))) {
             while (num != -1) {
                 num = dis.read(buf);
@@ -344,5 +344,4 @@ public class Loader {
             throw new IOException("no algorithm: " + csAlg);
         }
     }
-
 }
