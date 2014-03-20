@@ -1,6 +1,6 @@
 /*
  * Build file for BagIt library.
- * Copyright 2013 MIT Libraries
+ * Copyright 2013, 2014 MIT Libraries
  * For those who prefer maven-based builds, to bootstrap:
  * uncomment the line below, run 'gradle install', take the
  * pom-default.xml generated in build/poms, and go in peace.
@@ -17,11 +17,16 @@ sourceCompatibility = 1.7
 
 group = 'edu.mit.lib'
 archivesBaseName = 'bagit'
-version = '0.1'
+version = '0.2'
 description = 'Compact Java BagIt library'
 
+ext {
+    developerName = "Richard Rodgers"
+    developerId = "http://orcid.org/0000-0003-1412-5595"
+}
+
 dependencies {
-    compile group: 'org.apache.commons', name: 'commons-compress', version: '1.5'
+    compile group: 'org.apache.commons', name: 'commons-compress', version: '1.8'
     testCompile group: 'junit', name: 'junit', version: '4.11'
 }
 
