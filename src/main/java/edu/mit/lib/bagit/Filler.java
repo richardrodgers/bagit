@@ -135,7 +135,7 @@ public class Filler {
         // close all optional output streams
         Iterator<String> sIter = streams.keySet().iterator();
         while (sIter.hasNext()) {
-            getStream(null, sIter.next()).close();
+            getStream(null, sIter.next(), null).close();
         }
         // close the manifest file
         manWriter.close();
@@ -233,7 +233,7 @@ public class Filler {
         if (Files.exists(dataFile(relPath))) {
             throw new IllegalStateException("Payload file already exists at: " + relPath);
         }
-        return getStream(dataFile(relPath), relPath);
+        return getStream(dataFile(relPath), relPath, manWriter);
     }
 
     /**
@@ -286,7 +286,7 @@ public class Filler {
         if (Files.exists(tagFile(relPath))) {
             throw new IllegalStateException("Tag file already exists at: " + relPath);
         }
-        return getStream(tagFile(relPath), relPath);
+        return getStream(tagFile(relPath), relPath, tagWriter);
     }
 
     /**
@@ -360,10 +360,10 @@ public class Filler {
         return writer;
     }
 
-    private BagOutputStream getStream(Path path, String name) throws IOException {
+    private BagOutputStream getStream(Path path, String name, FlatWriter tailWriter) throws IOException {
         BagOutputStream stream = streams.get(name);
         if (stream == null) {
-            stream = new BagOutputStream(path, name, tagWriter);
+            stream = new BagOutputStream(path, name, tailWriter);
             streams.put(name, stream);
         }
         return stream;
@@ -401,6 +401,7 @@ public class Filler {
         private final OutputStream out;
         private final DigestOutputStream dout;
         private final FlatWriter tailWriter;
+        private boolean closed = false;
 
         private BagOutputStream(Path file, String relPath, FlatWriter tailWriter) throws IOException {
             try {
@@ -419,11 +420,14 @@ public class Filler {
         }
 
         @Override
-        public void close() throws IOException {
-            dout.flush();
-            out.close();
-            if (tailWriter != null) {
-                tailWriter.writeLine(toHex(dout.getMessageDigest().digest()) + " " + relPath);
+        public synchronized void close() throws IOException {
+            if (! closed) {
+                dout.flush();
+                out.close();
+                if (tailWriter != null) {
+                    tailWriter.writeLine(toHex(dout.getMessageDigest().digest()) + " " + relPath);
+                }
+                closed = true;
             }
         }
     }

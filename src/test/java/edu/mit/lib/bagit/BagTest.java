@@ -11,6 +11,7 @@ import java.io.OutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Scanner;
 import static java.nio.file.StandardCopyOption.*;
 
 import org.junit.Before;
@@ -253,6 +254,64 @@ public class BagTest {
         Path bagFile = tempFolder.newFolder("bag14").toPath();
         // should never reach this assert
         assertTrue(Files.notExists(bagFile));
+    }
+
+    @Test
+    public void correctManifestSize() throws IOException {
+        Path bagFile = tempFolder.newFolder("bag15").toPath();
+        Filler filler = new Filler(bagFile);
+        OutputStream plout = filler.payloadStream("first.pdf");
+        for (int i = 0; i < 1000; i++) {
+            plout.write("lskdflsfevmep".getBytes());
+        }
+        filler.payload("second.pdf", payload1);
+        Path fullBag = filler.toDirectory();
+        // manifest should have 2 lines - one for each payload
+        Path manif = fullBag.resolve("manifest-md5.txt");
+        assertTrue(lineCount(manif) == 2);
+    }
+
+    @Test
+    public void correctTagManifestSize() throws IOException {
+        Path bagFile = tempFolder.newFolder("bag16").toPath();
+        Filler filler = new Filler(bagFile);
+        OutputStream plout = filler.payloadStream("first.pdf");
+        for (int i = 0; i < 1000; i++) {
+            plout.write("lskdflsfevmep".getBytes());
+        }
+        filler.payload("second.pdf", payload1);
+        Path fullBag = filler.toDirectory();
+        Path manif = fullBag.resolve("tagmanifest-md5.txt");
+        // should have a line for bagit.txt, bag-info.txt, and manifest*.txt
+        assertTrue(lineCount(manif) == 3);
+    }
+
+    @Test
+    public void StreamCloseIndifferentManifest() throws IOException {
+        Path bagFile = tempFolder.newFolder("bag17").toPath();
+        Filler filler = new Filler(bagFile);
+        OutputStream plout = filler.payloadStream("first.pdf");
+        for (int i = 0; i < 1000; i++) {
+            plout.write("lskdflsfevmep".getBytes());
+        }
+        // note - client is closing stream
+        plout.close();
+        filler.payload("second.pdf", payload1);
+        Path fullBag = filler.toDirectory();
+        // manifest should have 2 lines - one for each payload
+        Path manif = fullBag.resolve("manifest-md5.txt");
+        assertTrue(lineCount(manif) == 2);
+    }
+
+    private int lineCount(Path file) throws IOException {
+        Scanner scanner = new Scanner(file);
+        int count = 0;
+        while (scanner.hasNext()) {
+            count++;
+            scanner.nextLine();
+        }
+        scanner.close();
+        return count;
     }
 }
 
