@@ -18,7 +18,7 @@ in java, (e.g. support for multiple spec versions), you may wish to consider the
 ## Creating Bags (producer pattern) ##
 
 A very simple 'fluent' builder interface is used to create bags, where content is added utilizing an object called
-a _Filler_. For example, to create a bag with a few files (here the java.io File instances 'file1', 'file2'):
+a _Filler_. For example, to create a bag with a few files (here the java.nio.file.Path File instances 'file1', 'file2'):
 
     Filler filler = new Filler().payload(file1).payload(file2);
 
