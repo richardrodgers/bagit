@@ -135,7 +135,7 @@ public class Filler {
         // close all optional output streams
         Iterator<String> sIter = streams.keySet().iterator();
         while (sIter.hasNext()) {
-            getStream(null, sIter.next(), null).close();
+            getStream(null, sIter.next(), null, true).close();
         }
         // close the manifest file
         manWriter.close();
@@ -233,7 +233,7 @@ public class Filler {
         if (Files.exists(dataFile(relPath))) {
             throw new IllegalStateException("Payload file already exists at: " + relPath);
         }
-        return getStream(dataFile(relPath), relPath, manWriter);
+        return getStream(dataFile(relPath), relPath, manWriter, true);
     }
 
     /**
@@ -286,7 +286,7 @@ public class Filler {
         if (Files.exists(tagFile(relPath))) {
             throw new IllegalStateException("Tag file already exists at: " + relPath);
         }
-        return getStream(tagFile(relPath), relPath, tagWriter);
+        return getStream(tagFile(relPath), relPath, tagWriter, false);
     }
 
     /**
@@ -360,10 +360,10 @@ public class Filler {
         return writer;
     }
 
-    private BagOutputStream getStream(Path path, String name, FlatWriter tailWriter) throws IOException {
+    private BagOutputStream getStream(Path path, String name, FlatWriter tailWriter, boolean isPayload) throws IOException {
         BagOutputStream stream = streams.get(name);
         if (stream == null) {
-            stream = new BagOutputStream(path, name, tailWriter);
+            stream = new BagOutputStream(path, name, tailWriter, isPayload);
             streams.put(name, stream);
         }
         return stream;
@@ -372,7 +372,7 @@ public class Filler {
     class FlatWriter extends BagOutputStream {
     
         private FlatWriter(Path file, String brPath, FlatWriter tailWriter) throws IOException {
-            super(file, brPath, tailWriter);
+            super(file, brPath, tailWriter, false);
         }
 
         public void writeProperty(String key, String value) throws IOException {
@@ -401,14 +401,16 @@ public class Filler {
         private final OutputStream out;
         private final DigestOutputStream dout;
         private final FlatWriter tailWriter;
+        private final boolean isPayload;
         private boolean closed = false;
 
-        private BagOutputStream(Path file, String relPath, FlatWriter tailWriter) throws IOException {
+        private BagOutputStream(Path file, String relPath, FlatWriter tailWriter, boolean isPayload) throws IOException {
             try {
                 out = Files.newOutputStream(file);
                 dout = new DigestOutputStream(out, MessageDigest.getInstance(csAlg));
                 this.relPath = (relPath != null) ? relPath : file.getFileName().toString();
                 this.tailWriter = tailWriter;
+                this.isPayload = isPayload;
             } catch (NoSuchAlgorithmException nsae) {
                 throw new IOException("no such algorithm: " + csAlg);
             }
@@ -425,7 +427,8 @@ public class Filler {
                 dout.flush();
                 out.close();
                 if (tailWriter != null) {
-                    tailWriter.writeLine(toHex(dout.getMessageDigest().digest()) + " " + relPath);
+                    String path = isPayload ? DATA_PATH + relPath : relPath;
+                    tailWriter.writeLine(toHex(dout.getMessageDigest().digest()) + " " + path);
                 }
                 closed = true;
             }

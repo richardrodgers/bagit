@@ -69,9 +69,8 @@ public class Loader {
             (suffix.equals(DFLT_FMT) || suffix.equals(TGZIP_FMT))) {
             String dirName = baseName.substring(0, sfxIdx);
             base = file.getParent().resolve(dirName);
-            Path dFile = base.resolve(DATA_DIR);
-            Files.createDirectories(dFile);
-            inflate(Files.newInputStream(file), suffix);
+            Files.createDirectories(base.resolve(DATA_DIR));
+            inflate(file.getParent(), Files.newInputStream(file), suffix);
             // remove archive original
             Files.delete(file);
         } else {
@@ -94,13 +93,13 @@ public class Loader {
      * Returns a new Loader (bag loader) instance using passed I/O stream
      * and format with bag in the passed directory location
      *
-     * @param base the base directory or archive file into which to extract the bag
+     * @param parent the parent directory into which to extract the bag directory
      * @param in the input stream containing the serialized bag
      * @param format the expected serialization format
      */
-    public Loader(Path base, InputStream in, String format) throws IOException {
-        this.base = (base != null) ? base : Files.createTempDirectory("bag");
-        inflate(in, format);
+    public Loader(Path parent, InputStream in, String format) throws IOException {
+        Path theParent = (parent != null) ? parent : Files.createTempDirectory("bagparent");
+        inflate(theParent, in, format);
     }
 
     /**
@@ -302,12 +301,15 @@ public class Loader {
     }
 
     // inflate compressesd archive in base directory
-    private void inflate(InputStream in, String fmt) throws IOException {
+    private void inflate(Path parent, InputStream in, String fmt) throws IOException {
         switch (fmt) {
             case "zip" :
                 try (ZipInputStream zin = new ZipInputStream(in)) {
                     ZipEntry entry = null;
                     while((entry = zin.getNextEntry()) != null) {
+                        if (base == null) {
+                            base = parent.resolve(entry.getName().substring(0, entry.getName().indexOf("/")));
+                        }
                         Path outFile = base.getParent().resolve(entry.getName());
                         Files.createDirectories(outFile.getParent());
                         Files.copy(zin, outFile);
@@ -319,7 +321,10 @@ public class Loader {
                                                  new GzipCompressorInputStream(in))) {
                     TarArchiveEntry tentry = null;
                     while((tentry = tin.getNextTarEntry()) != null) {
-                        Path outFile = base.getParent().resolve(tentry.getName());
+                        if (base == null) {
+                            base = parent.resolve(tentry.getName().substring(0, tentry.getName().indexOf("/")));
+                        }
+                        Path outFile = parent.resolve(tentry.getName());
                         Files.createDirectories(outFile.getParent());
                         Files.copy(tin, outFile);
                     }

@@ -11,7 +11,9 @@ import java.io.OutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Scanner;
+import java.util.Map;
 import static java.nio.file.StandardCopyOption.*;
 
 import org.junit.Before;
@@ -93,6 +95,7 @@ public class BagTest {
         // assure completeness
         Bag bag = new Loader(bagFile).load();
         assertTrue(bag.isComplete());
+        assertTrue(bag.isValid());
     }
 
     @Test
@@ -105,6 +108,10 @@ public class BagTest {
         assertTrue(Files.exists(pload1));
         Path pload2 = payloadDir.resolve("second/second.pdf");
         assertTrue(Files.exists(pload2));
+         // assure completeness
+        Bag bag = new Loader(bagFile).load();
+        assertTrue(bag.isComplete());
+        assertTrue(bag.isValid());
     }
 
     @Test
@@ -117,6 +124,10 @@ public class BagTest {
         assertTrue(Files.exists(ttag1));
         Path ttag2 = tagDir.resolve("second.pdf");
         assertTrue(Files.exists(ttag2));
+         // assure completeness
+        Bag bag = new Loader(bagFile).load();
+        assertTrue(bag.isComplete());
+        assertTrue(bag.isValid());
     }
 
     @Test
@@ -219,11 +230,70 @@ public class BagTest {
         assertTrue(Files.exists(pload1));
         Path ttag1 = bagFile.resolve("firstTag.txt");
         assertTrue(Files.exists(ttag1));
+        // assure completeness
+        Bag bag = new Loader(bagFile).load();
+        assertTrue(bag.isComplete());
+        assertTrue(bag.isValid());
     }
 
     @Test
-    public void streamWrittenBag() throws IOException {
+    public void streamWrittenPayloadBag() throws IOException {
         Path bagFile = tempFolder.newFolder("bag13").toPath();
+        Filler filler = new Filler(bagFile);
+        OutputStream plout = filler.payloadStream("first.pdf");
+        for (int i = 0; i < 1000; i++) {
+            plout.write("lskdflsfevmep".getBytes());
+        }
+        plout.close();
+        filler.toDirectory();
+        // write the same to dup file
+        Path dupFile = tempFolder.newFile("dupFile").toPath();
+        OutputStream dupOut = Files.newOutputStream(dupFile);
+        for (int i = 0; i < 1000; i++) {
+            dupOut.write("lskdflsfevmep".getBytes());
+        }
+        dupOut.close();
+        Path payloadDir = bagFile.resolve(DATA_DIR);
+        Path pload1 = payloadDir.resolve("first.pdf");
+        assertTrue(Files.exists(pload1));
+        assertTrue(Files.size(pload1) == Files.size(dupFile));
+         // assure completeness
+        Bag bag = new Loader(bagFile).load();
+        try {
+            Path pload2 = bag.payloadFile("first.pdf");
+            assertTrue(Files.size(pload2) == Files.size(dupFile));
+        } catch (Exception e) {}
+        assertTrue(bag.isComplete());
+        assertTrue(bag.isValid());
+    }
+
+     @Test
+    public void streamFilePayloadParityBag() throws IOException {
+        Path bagFile = tempFolder.newFolder("bag14").toPath();
+        Filler filler = new Filler(bagFile);
+        filler.payload("first.pdf", payload1);
+        OutputStream dupOut = filler.payloadStream("second.pdf");
+        // write the same as stream
+        InputStream dupIn = Files.newInputStream(payload1);
+        int read = dupIn.read();
+        while(read != -1) {
+            dupOut.write(read);
+            read = dupIn.read();
+        }
+        dupIn.close();
+        dupOut.close();
+        Path bagDir = filler.toDirectory();
+        Bag fullBag = new Loader(bagDir).load();
+        try {
+            assertTrue(Files.size(fullBag.payloadFile("first.pdf")) == Files.size(fullBag.payloadFile("second.pdf")));
+        } catch (Exception e) {}
+        Map<String, String> manif = fullBag.payloadManifest();
+        assertTrue(manif.get("data/first.pdf").equals(manif.get("data/second.pdf")));
+    }
+
+     @Test
+    public void streamWrittenBag() throws IOException {
+        Path bagFile = tempFolder.newFolder("bag15").toPath();
         Filler filler = new Filler(bagFile);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
@@ -241,6 +311,10 @@ public class BagTest {
         assertTrue(Files.exists(pload1));
         Path ttag1 = bagFile.resolve("tags/firstTag.txt");
         assertTrue(Files.exists(ttag1));
+        // assure completeness
+        Bag bag = new Loader(bagFile).load();
+        assertTrue(bag.isComplete());
+        assertTrue(bag.isValid());
     }
 
     @Test(expected = IOException.class)
@@ -251,14 +325,14 @@ public class BagTest {
         in1.close();
         // should throw exception here - closing in1 should delete bag
         InputStream in2 = filler.toStream();
-        Path bagFile = tempFolder.newFolder("bag14").toPath();
+        Path bagFile = tempFolder.newFolder("bag16").toPath();
         // should never reach this assert
         assertTrue(Files.notExists(bagFile));
     }
 
     @Test
     public void correctManifestSize() throws IOException {
-        Path bagFile = tempFolder.newFolder("bag15").toPath();
+        Path bagFile = tempFolder.newFolder("bag17").toPath();
         Filler filler = new Filler(bagFile);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
@@ -273,7 +347,7 @@ public class BagTest {
 
     @Test
     public void correctTagManifestSize() throws IOException {
-        Path bagFile = tempFolder.newFolder("bag16").toPath();
+        Path bagFile = tempFolder.newFolder("bag18").toPath();
         Filler filler = new Filler(bagFile);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
@@ -288,7 +362,7 @@ public class BagTest {
 
     @Test
     public void StreamCloseIndifferentManifest() throws IOException {
-        Path bagFile = tempFolder.newFolder("bag17").toPath();
+        Path bagFile = tempFolder.newFolder("bag19").toPath();
         Filler filler = new Filler(bagFile);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
@@ -303,6 +377,147 @@ public class BagTest {
         assertTrue(lineCount(manif) == 2);
     }
 
+    @Test
+    public void loadedFromFileComplete() throws IOException {
+        Path bagFile = tempFolder.newFolder("bag20").toPath();
+        Filler filler = new Filler(bagFile);
+        OutputStream plout = filler.payloadStream("first.pdf");
+        for (int i = 0; i < 1000; i++) {
+            plout.write("lskdflsfevmep".getBytes());
+        }
+        // note - client is closing stream
+        plout.close();
+        filler.payload("second.pdf", payload1);
+        Path fullBag = filler.toPackage();
+        // Load this bag from package file
+        Bag loadedBag = new Loader(fullBag).load();
+        assertTrue(loadedBag.isComplete());
+    }
+
+    @Test
+    public void loadedFromFileCSANotNull() throws IOException {
+        Path bagFile = tempFolder.newFolder("bag21").toPath();
+        Filler filler = new Filler(bagFile);
+        OutputStream plout = filler.payloadStream("first.pdf");
+        for (int i = 0; i < 1000; i++) {
+            plout.write("lskdflsfevmep".getBytes());
+        }
+        // note - client is closing stream
+        plout.close();
+        filler.payload("second.pdf", payload1);
+        Path fullBag = filler.toPackage();
+        // Load this bag from package file
+        Bag loadedBag = new Loader(fullBag).load();
+        assertNotNull(loadedBag.csAlgorithm());
+    }
+
+    @Test
+    public void loadedFromFileExpectedCSA() throws IOException {
+        Path bagFile = tempFolder.newFolder("bag22").toPath();
+        Filler filler = new Filler(bagFile);
+        OutputStream plout = filler.payloadStream("first.pdf");
+        for (int i = 0; i < 1000; i++) {
+            plout.write("lskdflsfevmep".getBytes());
+        }
+        // note - client is closing stream
+        plout.close();
+        filler.payload("second.pdf", payload1);
+        Path fullBag = filler.toPackage();
+        // Load this bag from package file
+        Bag loadedBag = new Loader(fullBag).load();
+        assertTrue(loadedBag.csAlgorithm().equals("md5"));
+    }
+
+    @Test
+    public void loadedFromFileValid() throws IOException {
+        Path bagFile = tempFolder.newFolder("bag23").toPath();
+        Filler filler = new Filler(bagFile);
+        OutputStream plout = filler.payloadStream("first.pdf");
+        for (int i = 0; i < 1000; i++) {
+            plout.write("lskdflsfevmep".getBytes());
+        }
+        // note - client is closing stream
+        plout.close();
+        filler.payload("second.pdf", payload1);
+        Path fullBag = filler.toPackage();
+        // Load this bag from package file
+        Bag loadedBag = new Loader(fullBag).load();
+        assertTrue(loadedBag.isValid());
+    }
+
+    @Test
+    public void loadedFromDirectoryValid() throws IOException {
+        Path bagFile = tempFolder.newFolder("bag24").toPath();
+        Filler filler = new Filler(bagFile);
+        OutputStream plout = filler.payloadStream("first.pdf");
+        for (int i = 0; i < 1000; i++) {
+            plout.write("lskdflsfevmep".getBytes());
+        }
+        // note - client is closing stream
+        plout.close();
+        filler.payload("second.pdf", payload1);
+        Path bagDir = filler.toDirectory();
+        // Load this bag from package file
+        Bag loadedBag = new Loader(bagDir).load();
+        assertTrue(loadedBag.isValid());
+    }
+
+    @Test
+    public void loadedFromStreamComplete() throws IOException {
+        Path bagFile = tempFolder.newFolder("bag25").toPath();
+        Filler filler = new Filler(bagFile);
+        OutputStream plout = filler.payloadStream("first.pdf");
+        for (int i = 0; i < 1000; i++) {
+            plout.write("lskdflsfevmep".getBytes());
+        }
+        // note - client is closing stream
+        plout.close();
+        filler.payload("second.pdf", payload1);
+        Path fullBag = filler.toPackage();
+        // Load this bag from stream
+        Loader loader = new Loader(Files.newInputStream(fullBag), "zip");
+        Bag loadedBag = loader.load();
+        assertNotNull(loadedBag.payloadManifest());
+        assertTrue(loadedBag.isComplete());
+    }
+
+    @Test
+    public void loadedFromStreamToDirComplete() throws IOException {
+        Path bagFile = tempFolder.newFolder("bag26").toPath();
+        Filler filler = new Filler(bagFile);
+        OutputStream plout = filler.payloadStream("first.pdf");
+        for (int i = 0; i < 1000; i++) {
+            plout.write("lskdflsfevmep".getBytes());
+        }
+        // note - client is closing stream
+        plout.close();
+        filler.payload("second.pdf", payload1);
+        Path fullBag = filler.toPackage();
+        // Load this bag from stream
+        Path newBag = tempFolder.newFolder("bag27").toPath();
+        Loader loader = new Loader(newBag, Files.newInputStream(fullBag), "zip");
+        Bag loadedBag = loader.load();
+        assertTrue(loadedBag.isComplete());
+    }
+
+    @Test
+    public void loadedFromStreamValid() throws IOException {
+        Path bagFile = tempFolder.newFolder("bag28").toPath();
+        Filler filler = new Filler(bagFile);
+        OutputStream plout = filler.payloadStream("first.pdf");
+        for (int i = 0; i < 1000; i++) {
+            plout.write("lskdflsfevmep".getBytes());
+        }
+        // note - client is closing stream
+        plout.close();
+        filler.payload("second.pdf", payload1);
+        Path fullBag = filler.toPackage();
+        // Load this bag from stream
+        Loader loader = new Loader(Files.newInputStream(fullBag), "zip");
+        Bag loadedBag = loader.load();
+        assertTrue(loadedBag.isValid());
+    }
+
     private int lineCount(Path file) throws IOException {
         Scanner scanner = new Scanner(file);
         int count = 0;
@@ -314,4 +529,3 @@ public class BagTest {
         return count;
     }
 }
-
