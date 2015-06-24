@@ -30,7 +30,7 @@ import static edu.mit.lib.bagit.Bag.MetadataName.*;
 
 /*
  * Basic unit tests for BagIt Library. Incomplete.
- */ 
+ */
 
 @RunWith(JUnit4.class)
 public class BagTest {
@@ -162,14 +162,14 @@ public class BagTest {
         assertTrue(Files.exists(payload1));
         assertNotNull(bag.metadata(BAGGING_DATE));
         assertNotNull(bag.metadata(BAG_SIZE));
-        assertNotNull(bag.metadata(PAYLOAD_OXNUM));
+        assertNotNull(bag.metadata(PAYLOAD_OXUM));
         Path bagFile2 = tempFolder.newFolder("bag7").toPath();
         Filler filler2 = new Filler(bagFile2).payload("first.pdf", payload1);
         filler2.noAutoGen().metadata(SOURCE_ORG, val2);
         Bag bag2 = new Loader(filler2.toDirectory()).load();
         assertNull(bag2.metadata(BAGGING_DATE));
         assertNull(bag2.metadata(BAG_SIZE));
-        assertNull(bag2.metadata(PAYLOAD_OXNUM));
+        assertNull(bag2.metadata(PAYLOAD_OXUM));
     }
 
     @Test
@@ -343,6 +343,23 @@ public class BagTest {
         // manifest should have 2 lines - one for each payload
         Path manif = fullBag.resolve("manifest-md5.txt");
         assertTrue(lineCount(manif) == 2);
+    }
+
+    @Test
+    public void correctManifestAPISize() throws IOException {
+        Path bagFile = tempFolder.newFolder("bag17-1").toPath();
+        Filler filler = new Filler(bagFile);
+        OutputStream plout = filler.payloadStream("first.pdf");
+        for (int i = 0; i < 1000; i++) {
+            plout.write("lskdflsfevmep".getBytes());
+        }
+        filler.payload("second.pdf", payload1);
+        // without serialization, only non-stream payload available in manifest count
+        assertTrue(filler.getManifest().size() == 1);
+        // serialization required to flush payloadstream
+        Path fullBag = filler.toDirectory();
+        // manifest should have 2 lines - one for each payload
+        assertTrue(filler.getManifest().size() == 2);
     }
 
     @Test

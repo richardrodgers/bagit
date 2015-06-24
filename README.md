@@ -4,12 +4,15 @@ This project contains a lightweight java library to support creation and consump
 by the BagIt IETF Draft Spec version 0.97. It requires a Java 7 or better JRE to run, has a single dependency on the Apache
 commons compression library for support of tarred Gzip archive format (".tgz"), and is Apache 2 licensed. Build with Gradle or Maven.
 
+[![Build Status](https://travis-ci.org/richardrodgers/bagit.svg?branch=master)]
+(https://travis-ci.org/richardrodgers/bagit)
+
 ## Use Cases ##
 
 The library attempts to simplify a few of the most common use cases/patterns involving bag packages.
 The first (the _producer_ pattern) is where content is assembled and placed into a bag, and the bag is then serialized
 for transport/hand-off to another component or system. The goal here is to ensure that the constructed bag is correct.
-A helper class - bag _Filler_  - is used to orchestrate this assembly. Sequence: new Filler -> add content -> add more content -> serialize.
+A helper class - bag _Filler_ - is used to orchestrate this assembly. Sequence: new Filler -> add content -> add more content -> serialize.
 The second (the _consumer_ pattern) is where a bag serialization (or a loose directory) is given and must
 be interpreted and validated for use. Here another helper class _Loader_ is used to deserialize.
 Sequence: new Loader -> load serialization -> convert to Bag -> process contents. If you have more complex needs
@@ -24,7 +27,7 @@ a _Filler_. For example, to create a bag with a few files (here the java.nio.fil
 
 Since bags are often used to _transmit_ packaged content, we would typically next obtain a serialization of the bag:
 
-    InputStream bagStream = filler.toStream(); 
+    InputStream bagStream = filler.toStream();
 
 This would be a very natural way to export bagged content to a network service. A few defaults are at work in
 this invocation, e.g. the 'toStream()' method with no arguments uses the default package serialization, which is a zip
@@ -41,12 +44,12 @@ In this case, a temporary directory for the bag is created. This has several imp
 is later used.  If a stream is requested (as in the first example above), the temporary bag will be automatically deleted as
 soon as the reader stream is closed. This is very convenient when used to transport bags to a network service - no clean-up is required:
 
-    Inputstream tempStream = new Filler().payload(myPayload).toStream();
+    InputStream tempStream = new Filler().payload(myPayload).toStream();
     // consume stream
     tempStream.close();
 
-If a package or directory is requested from the Filler (as opposed to a stream), the bag directory or file returned will be 
-deleted upon JVM exit only, which means that bag storage management could become an issue for a large number of 
+If a package or directory is requested from the Filler (as opposed to a stream), the bag directory or file returned will be
+deleted upon JVM exit only, which means that bag storage management could become an issue for a large number of
 files and/or a long-running JVM. Thus good practice would be to either: have the client copy the bag package/directory
 to a new location for long term preservation if desired, or timely client deletion of the package/directory so storage
 is not taxed.
@@ -73,19 +76,25 @@ Or the bag contents may be obtained from a network stream:
 
     String bagId = new Loader(inputStream, "zip").load().metadata("External-Identifier");
 
+## Zip Archives ##
+
+A common bag serialization supported is the ZIP archive format. When producing zip files, this library
+suppresses the file modification time attribute, in order that checksums may accurately reflect bag contents.
+That is, the checksum of a zipped bag is time-invariant, but content-sensitive. 
+
 ## Extras ##
 
 The library supports a few features not required by the BagIt spec. One is basic automatic
-metadata generation. There are a small number of reserved properties typically recorded in _bag-info.txt_ 
+metadata generation. There are a small number of reserved properties typically recorded in _bag-info.txt_
 that can easily be determined by the library. These values are automatically populated in _bag-info.txt_ by default.
-The 'auto-fill' properties are: Bagging-Date, Bag-Size, Payload-Oxnum, and one non-reserved property 'Bag-Software-Agent'.
-If automatic generation is not desired, an API call disables it. 
+The 'auto-fill' properties are: Bagging-Date, Bag-Size, Payload-Oxum, and one non-reserved property 'Bag-Software-Agent'.
+If automatic generation is not desired, an API call disables it.
 
 Another extra is _sealed_ bags. Bags created by Loaders are immutable, meaning they cannot be altered via the API.
 But we typically _can_ gain access to the backing bag storage, which we can of course then
 change at will. However, if a bag is created as _sealed_ (a method on the Loader), all
 method calls that expose the underlying storage will throw IllegalAccess exceptions. So, for example,
-we would be _unable_ to obtain a File reference, but _could_ get an I/O stream to the same content. 
+we would be _unable_ to obtain a File reference, but _could_ get an I/O stream to the same content.
 In other words, the content can be accessed, but the underlying representation cannot be altered, and
 to this degreee the bag contents are _tamper-proof_.
 
@@ -101,7 +110,7 @@ Sample invocation:
 NB: For a complete run-down, generate the javadoc for the package.
 
 Constructors:
-    
+
     // create a Filler using temporary backing directory and default checksum algorithm
     Filler()
     // create a Filler putting bag in passed directory and default checksum algorithm
@@ -148,12 +157,14 @@ Methods for manifesting bags:
     Path filler.toPackage()
     // create bag I/O stream from Filler data
     InputStream filler.toStream()
+    // obtain manifest data without manifesting bag
+    List<String> getManifest()
 
 ### Loader API Details ###
 
 Constructors:
 
-    // create a Loader from contents of directory or archive file 
+    // create a Loader from contents of directory or archive file
     Loader(Path file)
     // create a Loader from contents of input stream of expected package format
     Loader(InputStream stream, String format)
@@ -208,5 +219,3 @@ Methods to obtain tag metadata:
     List<String> bag.metadata(String name)
     // get metadata value(s) from a named tag on relative path of the named property
     List<String> bag.metadata(String relPath, String name)
-
-

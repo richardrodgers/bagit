@@ -66,7 +66,6 @@ public class Filler {
     private Map<String, FlatWriter> writers;
     // optional bag streams
     private Map<String, BagOutputStream> streams;
-    private List<String> manifest;
     // has bag been built?
     private boolean built;
     // transient bag?
@@ -92,17 +91,17 @@ public class Filler {
         this(base, null);
     }
 
-    /** 
+    /**
      * Returns a new filler (bag builder) instances using passed directory
      * and checksum algorithm.
-     * 
+     *
      * @param base directory for bag - if null, create temporary directory
      * @param csAlgorithm checksum algorithm string - if null use default
      */
     public Filler(Path base, String csAlgorithm) throws IOException {
         if (base != null) {
             this.base = base;
-        } else { 
+        } else {
             this.base = Files.createTempDirectory("bag");
             transientBag = true;
         }
@@ -110,15 +109,14 @@ public class Filler {
         Path dirPath = bagFile(DATA_DIR);
         if (Files.notExists(dirPath)) {
             Files.createDirectories(dirPath);
-        } 
+        }
         // prepare manifest writers
         String sfx = csAlg.toLowerCase() + ".txt";
-        tagWriter = new FlatWriter(bagFile(TAGMANIF_FILE + sfx), null, null);
-        manWriter = new FlatWriter(bagFile(MANIF_FILE + sfx), null, tagWriter);
+        tagWriter = new FlatWriter(bagFile(TAGMANIF_FILE + sfx), null, null, false);
+        manWriter = new FlatWriter(bagFile(MANIF_FILE + sfx), null, tagWriter, true);
         writers = new HashMap<>();
         streams = new HashMap<>();
-        manifest = new ArrayList<String>();
-    } 
+    }
 
     private void buildBag() throws IOException {
         if (built) return;
@@ -126,7 +124,7 @@ public class Filler {
         if (autogen) {
             metadata(MetadataName.BAGGING_DATE, new SimpleDateFormat("yyyy-MM-dd").format(new Date()));
             metadata(MetadataName.BAG_SIZE, scaledSize(payloadSize, 0));
-            metadata(MetadataName.PAYLOAD_OXNUM, String.valueOf(payloadSize) + "." + String.valueOf(payloadCount));
+            metadata(MetadataName.PAYLOAD_OXUM, String.valueOf(payloadSize) + "." + String.valueOf(payloadCount));
             metadata("Bag-Software-Agent", "MIT BagIt Lib v:" + LIB_VSN);
         }
         // close all optional writers' tag files
@@ -142,7 +140,7 @@ public class Filler {
         // close the manifest file
         manWriter.close();
         // write out bagit declaration file
-        FlatWriter fwriter = new FlatWriter(bagFile(DECL_FILE), null, tagWriter);
+        FlatWriter fwriter = new FlatWriter(bagFile(DECL_FILE), null, tagWriter, false);
         fwriter.writeLine("BagIt-Version: " + BAGIT_VSN);
         fwriter.writeLine("Tag-File-Character-Encoding: " + ENCODING);
         fwriter.close();
@@ -172,7 +170,7 @@ public class Filler {
     }
 
     /**
-     * Adds a file to the payload at the specified relative 
+     * Adds a file to the payload at the specified relative
      * path from the root of the data directory tree.
      *
      * @param relPath the relative path of the file
@@ -196,26 +194,25 @@ public class Filler {
             throw new IllegalStateException("Payload file already exists at: " + relPath);
         }
         // wrap stream in digest stream
-        try (DigestInputStream dis = 
+        try (DigestInputStream dis =
             new DigestInputStream(is, MessageDigest.getInstance(csAlg))) {
             payloadSize += Files.copy(dis, dataFile(relPath));
             payloadCount++;
             // record checksum
             manWriter.writeLine(toHex(dis.getMessageDigest().digest()) + " " + DATA_PATH + relPath);
-            manifest.add(toHex(dis.getMessageDigest().digest()) + " " + DATA_PATH + relPath);
         } catch (NoSuchAlgorithmException nsaE) {
             throw new IOException("no algorithm: " + csAlg);
         }
         return this;
     }
-    
+
     /**
      * Obtains manifest of bag contents.
      *
      * @return List manifest list
      */
     public List<String> getManifest() {
-        return manifest;
+        return manWriter.getLines();
     }
 
     /**
@@ -249,7 +246,7 @@ public class Filler {
     }
 
     /**
-     * Adds a tag (metadata) file at the specified relative 
+     * Adds a tag (metadata) file at the specified relative
      * path from the root of the bag directory tree.
      *
      * @param relPath the relative path of the file
@@ -277,7 +274,7 @@ public class Filler {
             throw new IllegalStateException("Tag file already exists at: " + relPath);
         }
         // wrap stream in digest stream
-        try (DigestInputStream dis = 
+        try (DigestInputStream dis =
              new DigestInputStream(is, MessageDigest.getInstance(csAlg))) {
             Files.copy(dis, tagFile(relPath));
             // record checksum
@@ -303,7 +300,7 @@ public class Filler {
 
     /**
      * Adds a reserved metadata property to the standard file
-     * (bag-info.txt) 
+     * (bag-info.txt)
      *
      * @param name the property name
      * @param value the property value
@@ -366,7 +363,7 @@ public class Filler {
     private synchronized FlatWriter getWriter(String name) throws IOException {
         FlatWriter writer = writers.get(name);
         if (writer == null) {
-            writer = new FlatWriter(bagFile(name), null, tagWriter);
+            writer = new FlatWriter(bagFile(name), null, tagWriter, false);
             writers.put(name, writer);
         }
         return writer;
@@ -382,9 +379,13 @@ public class Filler {
     }
 
     class FlatWriter extends BagOutputStream {
-    
-        private FlatWriter(Path file, String brPath, FlatWriter tailWriter) throws IOException {
+
+        private final List<String> lines = new ArrayList<>();
+        private final boolean record;
+
+        private FlatWriter(Path file, String brPath, FlatWriter tailWriter, boolean record) throws IOException {
             super(file, brPath, tailWriter, false);
+            this.record = record;
         }
 
         public void writeProperty(String key, String value) throws IOException {
@@ -401,11 +402,18 @@ public class Filler {
         }
 
         public void writeLine(String line) throws IOException {
+            if (record) {
+              lines.add(line);
+            }
             byte[] bytes = (line + "\n").getBytes(ENCODING);
             write(bytes);
         }
+
+        public List<String> getLines() {
+            return lines;
+        }
     }
-    
+
     // wraps output stream in digester, and records results with tail writer
     class BagOutputStream extends OutputStream {
 
@@ -498,7 +506,7 @@ public class Filler {
     public InputStream toStream(String format) throws IOException {
         Path pkgFile = deflate(format);
         if (transientBag) {
-            return new CleanupInputStream(Files.newInputStream(pkgFile), pkgFile); 
+            return new CleanupInputStream(Files.newInputStream(pkgFile), pkgFile);
         } else {
             return Files.newInputStream(pkgFile);
         }
@@ -511,7 +519,7 @@ public class Filler {
         public CleanupInputStream(InputStream in, Path file) {
             super(in);
             this.file = file;
-        } 
+        }
 
         @Override
         public void close() throws IOException {
@@ -535,7 +543,7 @@ public class Filler {
             }
         } catch (IOException ioE) {}
     }
-    
+
     private Path deflate(String format) throws IOException {
         // deflate this bag in situ (in current directory) using given packaging format
         buildBag();
@@ -543,9 +551,9 @@ public class Filler {
         deflate(Files.newOutputStream(pkgFile), format);
         // remove base
         empty();
-        return pkgFile;        
+        return pkgFile;
     }
-    
+
     private void deflate(OutputStream out, String format) throws IOException {
         switch(format) {
             case "zip":
@@ -554,7 +562,7 @@ public class Filler {
                     fillZip(base, base.getFileName().toString(), zout);
                 }
                 break;
-            case "tgz": 
+            case "tgz":
                 try (TarArchiveOutputStream tout = new TarArchiveOutputStream(
                                                    new BufferedOutputStream(
                                                    new GzipCompressorOutputStream(out)))) {
@@ -565,7 +573,7 @@ public class Filler {
                 throw new IOException("Unsupported package format: " + format);
         }
     }
-    
+
     private void fillArchive(Path dirFile, String relBase, ArchiveOutputStream out) throws IOException {
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(dirFile)) {
             for (Path file : stream) {
@@ -581,7 +589,7 @@ public class Filler {
                     out.closeArchiveEntry();
                 }
             }
-        } 
+        }
     }
 
     private void fillZip(Path dirFile, String relBase, ZipOutputStream zout) throws IOException {
@@ -598,6 +606,6 @@ public class Filler {
                     zout.closeEntry();
                 }
             }
-        } 
+        }
     }
 }

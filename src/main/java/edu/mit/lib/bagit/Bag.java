@@ -26,11 +26,11 @@ import java.util.Map;
  * A Bag is a directory with contents and a little structured metadata in it.
  * Although they don't have to be, these bags are 'wormy' - meaning that they
  * can be written only once (have no update semantics), and can be 'holey' -
- * meaning they can contain content by reference as well as inclusion. 
- * 
+ * meaning they can contain content by reference as well as inclusion.
+ *
  * Bags are not directly instantiated - package helper classes (Filler, Loader)
  * can create bags and serialize them to a compressed archive file (supported
- * formats zip or tgz) or be deserialized from same or a stream, 
+ * formats zip or tgz) or be deserialized from same or a stream,
  * abiding by the serialization recommendations of the specification.
  *
  * See README for sample invocations and API description.
@@ -43,7 +43,7 @@ public class Bag {
     static final String ENCODING = "UTF-8";
     static final String CS_ALGO = "MD5";
     static final String BAGIT_VSN = "0.97";
-    static final String LIB_VSN = "0.4";
+    static final String LIB_VSN = "0.5";
     static final String DFLT_FMT = "zip";
     static final String TGZIP_FMT = "tgz";
     static final String SPACER = "  ";
@@ -69,7 +69,7 @@ public class Bag {
         EXTERNAL_ID("External-Identifier"),
         BAGGING_DATE("Bagging-Date"),
         BAG_SIZE("Bag-Size"),
-        PAYLOAD_OXNUM("Payload-Oxnum"),
+        PAYLOAD_OXUM("Payload-Oxum"),
         BAG_GROUP_ID("Bag-Group-Identifier"),
         BAG_COUNT("Bag-Count"),
         INTERNAL_SENDER_ID("Internal-Sender-Identifier"),
@@ -177,7 +177,7 @@ public class Bag {
                 if (Files.isDirectory(tag)) tagCount += fileCount(tag);
                 else tagCount++;
             }
-        } 
+        }
         if (tagCount != tags.size()) return false;
         // files themselves must match also
         for (String path : tags.keySet()) {
@@ -391,7 +391,7 @@ public class Bag {
                     count++;
                 }
             }
-        } 
+        }
         return count;
     }
 
@@ -426,7 +426,7 @@ public class Bag {
             throw new IOException("no input");
         }
         // wrap stream in digest stream
-        try (DigestInputStream dis = 
+        try (DigestInputStream dis =
             new DigestInputStream(is, MessageDigest.getInstance(csAlg))) {
             while (num != -1) {
                 num = dis.read(buf);
@@ -459,7 +459,7 @@ public class Bag {
                 String fileName = manFile.getFileName().toString();
                 return fileName.substring(MANIF_FILE.length(), fileName.lastIndexOf("."));
             }
-        } 
+        }
         // if no any manifest files, return null
         return null;
     }
