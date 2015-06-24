@@ -66,6 +66,7 @@ public class Filler {
     private Map<String, FlatWriter> writers;
     // optional bag streams
     private Map<String, BagOutputStream> streams;
+    private List<String> manifest;
     // has bag been built?
     private boolean built;
     // transient bag?
@@ -116,6 +117,7 @@ public class Filler {
         manWriter = new FlatWriter(bagFile(MANIF_FILE + sfx), null, tagWriter);
         writers = new HashMap<>();
         streams = new HashMap<>();
+        manifest = new ArrayList<String>();
     } 
 
     private void buildBag() throws IOException {
@@ -200,10 +202,20 @@ public class Filler {
             payloadCount++;
             // record checksum
             manWriter.writeLine(toHex(dis.getMessageDigest().digest()) + " " + DATA_PATH + relPath);
+            manifest.add(toHex(dis.getMessageDigest().digest()) + " " + DATA_PATH + relPath);
         } catch (NoSuchAlgorithmException nsaE) {
             throw new IOException("no algorithm: " + csAlg);
         }
         return this;
+    }
+    
+    /**
+     * Obtains manifest of bag contents.
+     *
+     * @return List manifest list
+     */
+    public List<String> getManifest() {
+        return manifest;
     }
 
     /**
