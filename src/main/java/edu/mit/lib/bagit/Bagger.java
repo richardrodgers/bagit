@@ -16,7 +16,7 @@ import java.util.Map;
 
 /**
  * Bagger is a command-line interface to the BagIt library.
- * It allows simple creation, serialization, and validation of Bags. 
+ * It allows simple creation, serialization, and validation of Bags.
  *
  * See README for sample invocations.
  *
@@ -56,12 +56,12 @@ public class Bagger {
             i += 2;
         }
         // execute command if recognized
-        Path bagName = Paths.get(args[1]);
+        Path bagName = Paths.get(args[1]).toAbsolutePath();
         switch(args[0]) {
             case "fill" : bagger.fill(bagName); break;
-            case "plug" : bagger.plug(bagName); break; 
-            case "complete" : bagger.complete(bagName); break; 
-            case "validate" : bagger.validate(bagName); break; 
+            case "plug" : bagger.plug(bagName); break;
+            case "complete" : bagger.complete(bagName); break;
+            case "validate" : bagger.validate(bagName); break;
             default: System.out.println("Unknown command: '" + args[0] + "'"); usage();
         }
     }
@@ -80,7 +80,7 @@ public class Bagger {
             "-r    <bag path>=<URL> - payload reference\n" +
             "-t    [<bag path>=]<tag file>\n" +
             "-m    <name>=<value> - metadata statement\n" +
-            "-a    <archive format> - e.g. 'zip', 'tgz' (default: loose directory)\n" +
+            "-a    <archive format> - e.g. 'zip', 'zip.nd', 'tgz', 'tgz.nd' (default: loose directory)\n" +
             "-c    <checksum algorithm> - default: 'MD5'\n" +
             "-o    <optimization flag>\n" +
             "-v    <level> - output level to console (default: 0 = no output)");

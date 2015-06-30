@@ -547,7 +547,9 @@ public class Filler {
     private Path deflate(String format) throws IOException {
         // deflate this bag in situ (in current directory) using given packaging format
         buildBag();
-        Path pkgFile = base.getParent().resolve(base.getFileName().toString() + "." + format);
+        int ndIdx = format.indexOf(".nd");
+        String sfx = (ndIdx > 0) ? format.substring(0, ndIdx) : format;
+        Path pkgFile = base.getParent().resolve(base.getFileName().toString() + "." + sfx);
         deflate(Files.newOutputStream(pkgFile), format);
         // remove base
         empty();
@@ -559,14 +561,27 @@ public class Filler {
             case "zip":
                 try (ZipOutputStream zout = new ZipOutputStream(
                                             new BufferedOutputStream(out))) {
-                    fillZip(base, base.getFileName().toString(), zout);
+                    fillZip(base, base.getFileName().toString(), zout, true);
+                }
+                break;
+            case "zip.nd":
+                try (ZipOutputStream zout = new ZipOutputStream(
+                                            new BufferedOutputStream(out))) {
+                     fillZip(base, base.getFileName().toString(), zout, false);
                 }
                 break;
             case "tgz":
                 try (TarArchiveOutputStream tout = new TarArchiveOutputStream(
                                                    new BufferedOutputStream(
                                                    new GzipCompressorOutputStream(out)))) {
-                    fillArchive(base, base.getFileName().toString(), tout);
+                    fillArchive(base, base.getFileName().toString(), tout, true);
+                }
+                break;
+            case "tgz.nd":
+                try (TarArchiveOutputStream tout = new TarArchiveOutputStream(
+                                                       new BufferedOutputStream(
+                                                       new GzipCompressorOutputStream(out)))) {
+                    fillArchive(base, base.getFileName().toString(), tout, false);
                 }
                 break;
             default:
@@ -574,16 +589,16 @@ public class Filler {
         }
     }
 
-    private void fillArchive(Path dirFile, String relBase, ArchiveOutputStream out) throws IOException {
+    private void fillArchive(Path dirFile, String relBase, ArchiveOutputStream out, boolean keepDate) throws IOException {
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(dirFile)) {
             for (Path file : stream) {
                 String relPath = relBase + '/' + file.getFileName().toString();
                 if (Files.isDirectory(file)) {
-                    fillArchive(file, relPath, out);
+                    fillArchive(file, relPath, out, keepDate);
                 } else {
                     TarArchiveEntry entry = new TarArchiveEntry(relPath);
                     entry.setSize(Files.size(file));
-                    entry.setModTime(0L);
+                    entry.setModTime(keepDate ? file.toFile().lastModified() : 0L);
                     out.putArchiveEntry(entry);
                     Files.copy(file, out);
                     out.closeArchiveEntry();
@@ -592,15 +607,15 @@ public class Filler {
         }
     }
 
-    private void fillZip(Path dirFile, String relBase, ZipOutputStream zout) throws IOException {
+    private void fillZip(Path dirFile, String relBase, ZipOutputStream zout, boolean keepDate) throws IOException {
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(dirFile)) {
             for (Path file : stream) {
                 String relPath = relBase + '/' + file.getFileName().toString();
                 if (Files.isDirectory(file)) {
-                    fillZip(file, relPath, zout);
+                    fillZip(file, relPath, zout, keepDate);
                 } else {
                     ZipEntry entry = new ZipEntry(relPath);
-                    entry.setTime(0L);
+                    entry.setTime(keepDate ? file.toFile().lastModified() : 0L);
                     zout.putNextEntry(entry);
                     Files.copy(file, zout);
                     zout.closeEntry();

@@ -76,11 +76,13 @@ Or the bag contents may be obtained from a network stream:
 
     String bagId = new Loader(inputStream, "zip").load().metadata("External-Identifier");
 
-## Zip Archives ##
+## Archive formats ##
 
-A common bag serialization supported is the ZIP archive format. When producing zip files, this library
-suppresses the file modification time attribute, in order that checksums may accurately reflect bag contents.
-That is, the checksum of a zipped bag is time-invariant, but content-sensitive. 
+Bags are commonly serialized to standard archive formats such as ZIP. The library supports two archive formats:
+'zip' and 'tgz' and the variants 'zip.nd' and 'tgz.nd' (no date). If these variants are used, the library
+suppresses the file modification time attribute, in order that checksums of archives produced at different times
+may accurately reflect only bag contents. That is, the checksum of a zip.nd bag is time-of-archiving and file
+system-time-invariant, but content-sensitive.
 
 ## Extras ##
 
