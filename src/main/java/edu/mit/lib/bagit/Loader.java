@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.FileTime;
 import java.security.DigestInputStream;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
@@ -50,7 +51,7 @@ public class Loader {
     private final ConcurrentMap<String, String> payloadRefMap = new ConcurrentHashMap<>();
     // manifest writer
     private LoaderWriter manWriter;
-   
+
    /**
      * Returns a new Loader (bag loader) instance using passed
      * file (loose directory or archive file)
@@ -65,7 +66,7 @@ public class Loader {
         String baseName = file.getFileName().toString();
         int sfxIdx = baseName.lastIndexOf(".");
         String suffix = (sfxIdx != -1) ? baseName.substring(sfxIdx + 1) : null;
-        if (! Files.isDirectory(file) && suffix != null && 
+        if (! Files.isDirectory(file) && suffix != null &&
             (suffix.equals(DFLT_FMT) || suffix.equals(TGZIP_FMT))) {
             String dirName = baseName.substring(0, sfxIdx);
             base = file.getParent().resolve(dirName);
@@ -109,7 +110,7 @@ public class Loader {
      */
     public String csAlgorithm() throws IOException {
         if (csAlg == null) {
-            csAlg = Bag.csAlgorithm(base); 
+            csAlg = Bag.csAlgorithm(base);
         }
         return csAlg;
     }
@@ -148,7 +149,7 @@ public class Loader {
                         String[] parts = refline.split(" ");
                         if (payloadRefMap.containsKey(parts[2])) {
                             refOut.write(refline.getBytes(ENCODING));
-                        } 
+                        }
                     }
                 }
             }
@@ -255,7 +256,7 @@ public class Loader {
     }
 
     class LoaderWriter extends LoaderOutputStream {
-    
+
         private LoaderWriter(Path file, String brPath, boolean append, LoaderWriter tailWriter) throws IOException {
             super(file, brPath, append, tailWriter);
         }
@@ -313,6 +314,9 @@ public class Loader {
                         Path outFile = base.getParent().resolve(entry.getName());
                         Files.createDirectories(outFile.getParent());
                         Files.copy(zin, outFile);
+                        // Set file attributes to ZipEntry values
+                        Files.setAttribute(outFile, "creationTime", entry.getCreationTime());
+                        Files.setLastModifiedTime(outFile, entry.getLastModifiedTime());
                     }
                 }
                 break;
@@ -327,11 +331,12 @@ public class Loader {
                         Path outFile = parent.resolve(tentry.getName());
                         Files.createDirectories(outFile.getParent());
                         Files.copy(tin, outFile);
+                        Files.setLastModifiedTime(outFile, FileTime.fromMillis(tentry.getLastModifiedDate().getTime()));
                     }
                 }
                 break;
             default:
-                throw new IOException("Unsupported archive format: " + fmt);                            
+                throw new IOException("Unsupported archive format: " + fmt);
         }
     }
 

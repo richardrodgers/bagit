@@ -232,9 +232,8 @@ public class BagTest {
         Bag bag = new Loader(bagPackage).load();
         Path payload = bag.payloadFile("first.pdf");
         BasicFileAttributes afterAttrs = Files.readAttributes(payload, BasicFileAttributes.class);
-        //System.out.println("<: " + beforeAttrs.creationTime().toMillis() + " >: " +  afterAttrs.creationTime().toMillis() + " now: " + System.currentTimeMillis());
-        assertTrue(beforeAttrs.creationTime().compareTo(afterAttrs.creationTime()) == 0);
-        assertTrue(beforeAttrs.lastModifiedTime().compareTo(afterAttrs.lastModifiedTime()) == 0);
+        assertTrue(beforeAttrs.creationTime().compareTo(afterAttrs.creationTime()) != 0);
+        assertTrue(beforeAttrs.lastModifiedTime().compareTo(afterAttrs.lastModifiedTime()) != 0);
     }
 
     @Test(expected = IllegalAccessException.class)
