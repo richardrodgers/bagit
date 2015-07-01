@@ -12,6 +12,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.util.Scanner;
 import java.util.Map;
 import static java.nio.file.StandardCopyOption.*;
@@ -206,9 +208,38 @@ public class BagTest {
         assertTrue(Files.size(payload1) == Files.size(payload));
     }
 
+    @Test
+    public void bagFileAttributesPreservedInZip() throws IOException, IllegalAccessException {
+        Path bagFile = tempFolder.newFolder("bag11").toPath();
+        BasicFileAttributes beforeAttrs = Files.readAttributes(payload1, BasicFileAttributes.class);
+        Filler filler = new Filler(bagFile).payload("first.pdf", payload1);
+        // 'zip' should preserve file time attrs
+        Path bagPackage = filler.toPackage("zip");
+        Bag bag = new Loader(bagPackage).load();
+        Path payload = bag.payloadFile("first.pdf");
+        BasicFileAttributes afterAttrs = Files.readAttributes(payload, BasicFileAttributes.class);
+        assertTrue(beforeAttrs.creationTime().compareTo(afterAttrs.creationTime()) == 0);
+        assertTrue(beforeAttrs.lastModifiedTime().compareTo(afterAttrs.lastModifiedTime()) == 0);
+    }
+
+    @Test
+    public void bagFileAttributesClearedInZipNt() throws IOException, IllegalAccessException {
+        Path bagFile = tempFolder.newFolder("bag12").toPath();
+        BasicFileAttributes beforeAttrs = Files.readAttributes(payload1, BasicFileAttributes.class);
+        Filler filler = new Filler(bagFile).payload("first.pdf", payload1);
+        // 'zip.nt' should strip file time attrs
+        Path bagPackage = filler.toPackage("zip.nt");
+        Bag bag = new Loader(bagPackage).load();
+        Path payload = bag.payloadFile("first.pdf");
+        BasicFileAttributes afterAttrs = Files.readAttributes(payload, BasicFileAttributes.class);
+        //System.out.println("<: " + beforeAttrs.creationTime().toMillis() + " >: " +  afterAttrs.creationTime().toMillis() + " now: " + System.currentTimeMillis());
+        assertTrue(beforeAttrs.creationTime().compareTo(afterAttrs.creationTime()) == 0);
+        assertTrue(beforeAttrs.lastModifiedTime().compareTo(afterAttrs.lastModifiedTime()) == 0);
+    }
+
     @Test(expected = IllegalAccessException.class)
     public void sealedBagAccess() throws IOException, IllegalAccessException {
-        Path bagFile = tempFolder.newFolder("bag11").toPath();
+        Path bagFile = tempFolder.newFolder("bag13").toPath();
         Filler filler = new Filler(bagFile).payload("first.pdf", payload1);
         Path bagPackage = filler.toPackage();
         Bag bag = new Loader(bagPackage).seal();
@@ -220,7 +251,7 @@ public class BagTest {
 
     @Test
     public void streamReadBag() throws IOException {
-        Path bagFile = tempFolder.newFolder("bag12").toPath();
+        Path bagFile = tempFolder.newFolder("bag14").toPath();
         Filler filler = new Filler(bagFile);
         InputStream plIS = Files.newInputStream(payload1);
         InputStream tagIS = Files.newInputStream(tag1);
@@ -238,7 +269,7 @@ public class BagTest {
 
     @Test
     public void streamWrittenPayloadBag() throws IOException {
-        Path bagFile = tempFolder.newFolder("bag13").toPath();
+        Path bagFile = tempFolder.newFolder("bag15").toPath();
         Filler filler = new Filler(bagFile);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
@@ -269,7 +300,7 @@ public class BagTest {
 
      @Test
     public void streamFilePayloadParityBag() throws IOException {
-        Path bagFile = tempFolder.newFolder("bag14").toPath();
+        Path bagFile = tempFolder.newFolder("bag16").toPath();
         Filler filler = new Filler(bagFile);
         filler.payload("first.pdf", payload1);
         OutputStream dupOut = filler.payloadStream("second.pdf");
@@ -293,7 +324,7 @@ public class BagTest {
 
      @Test
     public void streamWrittenBag() throws IOException {
-        Path bagFile = tempFolder.newFolder("bag15").toPath();
+        Path bagFile = tempFolder.newFolder("bag17").toPath();
         Filler filler = new Filler(bagFile);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
@@ -325,14 +356,14 @@ public class BagTest {
         in1.close();
         // should throw exception here - closing in1 should delete bag
         InputStream in2 = filler.toStream();
-        Path bagFile = tempFolder.newFolder("bag16").toPath();
+        Path bagFile = tempFolder.newFolder("bag18").toPath();
         // should never reach this assert
         assertTrue(Files.notExists(bagFile));
     }
 
     @Test
     public void correctManifestSize() throws IOException {
-        Path bagFile = tempFolder.newFolder("bag17").toPath();
+        Path bagFile = tempFolder.newFolder("bag19").toPath();
         Filler filler = new Filler(bagFile);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
@@ -347,7 +378,7 @@ public class BagTest {
 
     @Test
     public void correctManifestAPISize() throws IOException {
-        Path bagFile = tempFolder.newFolder("bag17-1").toPath();
+        Path bagFile = tempFolder.newFolder("bag20").toPath();
         Filler filler = new Filler(bagFile);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
@@ -364,7 +395,7 @@ public class BagTest {
 
     @Test
     public void correctTagManifestSize() throws IOException {
-        Path bagFile = tempFolder.newFolder("bag18").toPath();
+        Path bagFile = tempFolder.newFolder("bag21").toPath();
         Filler filler = new Filler(bagFile);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
@@ -379,7 +410,7 @@ public class BagTest {
 
     @Test
     public void StreamCloseIndifferentManifest() throws IOException {
-        Path bagFile = tempFolder.newFolder("bag19").toPath();
+        Path bagFile = tempFolder.newFolder("bag22").toPath();
         Filler filler = new Filler(bagFile);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
@@ -396,7 +427,7 @@ public class BagTest {
 
     @Test
     public void loadedFromFileComplete() throws IOException {
-        Path bagFile = tempFolder.newFolder("bag20").toPath();
+        Path bagFile = tempFolder.newFolder("bag23").toPath();
         Filler filler = new Filler(bagFile);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
@@ -413,7 +444,7 @@ public class BagTest {
 
     @Test
     public void loadedFromFileCSANotNull() throws IOException {
-        Path bagFile = tempFolder.newFolder("bag21").toPath();
+        Path bagFile = tempFolder.newFolder("bag24").toPath();
         Filler filler = new Filler(bagFile);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
@@ -430,7 +461,7 @@ public class BagTest {
 
     @Test
     public void loadedFromFileExpectedCSA() throws IOException {
-        Path bagFile = tempFolder.newFolder("bag22").toPath();
+        Path bagFile = tempFolder.newFolder("bag25").toPath();
         Filler filler = new Filler(bagFile);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
@@ -447,7 +478,7 @@ public class BagTest {
 
     @Test
     public void loadedFromFileValid() throws IOException {
-        Path bagFile = tempFolder.newFolder("bag23").toPath();
+        Path bagFile = tempFolder.newFolder("bag26").toPath();
         Filler filler = new Filler(bagFile);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
@@ -464,7 +495,7 @@ public class BagTest {
 
     @Test
     public void loadedFromDirectoryValid() throws IOException {
-        Path bagFile = tempFolder.newFolder("bag24").toPath();
+        Path bagFile = tempFolder.newFolder("bag27").toPath();
         Filler filler = new Filler(bagFile);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
@@ -481,7 +512,7 @@ public class BagTest {
 
     @Test
     public void loadedFromStreamComplete() throws IOException {
-        Path bagFile = tempFolder.newFolder("bag25").toPath();
+        Path bagFile = tempFolder.newFolder("bag28").toPath();
         Filler filler = new Filler(bagFile);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
@@ -500,7 +531,7 @@ public class BagTest {
 
     @Test
     public void loadedFromStreamToDirComplete() throws IOException {
-        Path bagFile = tempFolder.newFolder("bag26").toPath();
+        Path bagFile = tempFolder.newFolder("bag29").toPath();
         Filler filler = new Filler(bagFile);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
@@ -511,7 +542,7 @@ public class BagTest {
         filler.payload("second.pdf", payload1);
         Path fullBag = filler.toPackage();
         // Load this bag from stream
-        Path newBag = tempFolder.newFolder("bag27").toPath();
+        Path newBag = tempFolder.newFolder("bag30").toPath();
         Loader loader = new Loader(newBag, Files.newInputStream(fullBag), "zip");
         Bag loadedBag = loader.load();
         assertTrue(loadedBag.isComplete());
@@ -519,7 +550,7 @@ public class BagTest {
 
     @Test
     public void loadedFromStreamValid() throws IOException {
-        Path bagFile = tempFolder.newFolder("bag28").toPath();
+        Path bagFile = tempFolder.newFolder("bag31").toPath();
         Filler filler = new Filler(bagFile);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {

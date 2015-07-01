@@ -1,7 +1,7 @@
 # Java BagIt Library #
 
 This project contains a lightweight java library to support creation and consumption of BagIt-packaged content, as specified
-by the BagIt IETF Draft Spec version 0.97. It requires a Java 7 or better JRE to run, has a single dependency on the Apache
+by the BagIt IETF Draft Spec version 0.97. It requires a Java 8 or better JRE to run, has a single dependency on the Apache
 commons compression library for support of tarred Gzip archive format (".tgz"), and is Apache 2 licensed. Build with Gradle or Maven.
 
 [![Build Status](https://travis-ci.org/richardrodgers/bagit.svg?branch=master)]
@@ -79,10 +79,10 @@ Or the bag contents may be obtained from a network stream:
 ## Archive formats ##
 
 Bags are commonly serialized to standard archive formats such as ZIP. The library supports two archive formats:
-'zip' and 'tgz' and the variants 'zip.nd' and 'tgz.nd' (no date). If these variants are used, the library
-suppresses the file modification time attribute, in order that checksums of archives produced at different times
-may accurately reflect only bag contents. That is, the checksum of a zip.nd bag is time-of-archiving and file
-system-time-invariant, but content-sensitive.
+'zip' and 'tgz' and the variants 'zip.nt' and 'tgz.nt' (no time). If these variants are used, the library
+suppresses the file creation/modification time attributes, in order that checksums of archives produced at different times
+may accurately reflect only bag contents. That is, the checksum of a zip.nt bag (of the same name) is time-of-archiving-
+and filesystem-time-invariant, but content-sensitive.
 
 ## Extras ##
 

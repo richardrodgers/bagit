@@ -16,6 +16,8 @@ import java.io.OutputStream;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.security.DigestInputStream;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
@@ -178,7 +180,13 @@ public class Filler {
      * @return Filler this Filler
      */
     public Filler payload(String relPath, Path file) throws IOException {
-        return payload(relPath, Files.newInputStream(file));
+        Path payloadFile = dataFile(relPath);
+        commitPayload(payloadFile, relPath, Files.newInputStream(file));
+        // now rewrite payload attrs to original values
+        BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
+        Files.setAttribute(payloadFile, "creationTime", attrs.creationTime());
+        Files.setLastModifiedTime(payloadFile, attrs.lastModifiedTime());
+        return this;
     }
 
     /**
@@ -190,20 +198,24 @@ public class Filler {
      * @return Filler this Filler
      */
     public Filler payload(String relPath, InputStream is) throws IOException {
-        if (Files.exists(dataFile(relPath))) {
-            throw new IllegalStateException("Payload file already exists at: " + relPath);
-        }
-        // wrap stream in digest stream
-        try (DigestInputStream dis =
-            new DigestInputStream(is, MessageDigest.getInstance(csAlg))) {
-            payloadSize += Files.copy(dis, dataFile(relPath));
-            payloadCount++;
-            // record checksum
-            manWriter.writeLine(toHex(dis.getMessageDigest().digest()) + " " + DATA_PATH + relPath);
-        } catch (NoSuchAlgorithmException nsaE) {
-            throw new IOException("no algorithm: " + csAlg);
-        }
+        commitPayload(dataFile(relPath), relPath, is);
         return this;
+    }
+
+    private void commitPayload(Path payloadFile, String relPath, InputStream is) throws IOException {
+      if (Files.exists(payloadFile)) {
+          throw new IllegalStateException("Payload file already exists at: " + relPath);
+      }
+      // wrap stream in digest stream
+      try (DigestInputStream dis =
+          new DigestInputStream(is, MessageDigest.getInstance(csAlg))) {
+          payloadSize += Files.copy(dis, payloadFile);
+          payloadCount++;
+          // record checksum
+          manWriter.writeLine(toHex(dis.getMessageDigest().digest()) + " " + DATA_PATH + relPath);
+      } catch (NoSuchAlgorithmException nsaE) {
+          throw new IOException("no algorithm: " + csAlg);
+      }
     }
 
     /**
@@ -477,6 +489,7 @@ public class Filler {
     /**
      * Returns bag serialized as an archive file using passed packaging format.
      * Supported formats: 'zip' - zip archive, 'tgz' - gzip compressed tar archive
+     *  'zip.nt' and 'tgz.nt' the same except file time attributes suppressed
      *
      * @param format the package format ('zip', or 'tgz')
      * @return path the bag archive package path
@@ -547,7 +560,7 @@ public class Filler {
     private Path deflate(String format) throws IOException {
         // deflate this bag in situ (in current directory) using given packaging format
         buildBag();
-        int ndIdx = format.indexOf(".nd");
+        int ndIdx = format.indexOf(".nt");
         String sfx = (ndIdx > 0) ? format.substring(0, ndIdx) : format;
         Path pkgFile = base.getParent().resolve(base.getFileName().toString() + "." + sfx);
         deflate(Files.newOutputStream(pkgFile), format);
@@ -559,29 +572,18 @@ public class Filler {
     private void deflate(OutputStream out, String format) throws IOException {
         switch(format) {
             case "zip":
+            case "zip.nt":
                 try (ZipOutputStream zout = new ZipOutputStream(
                                             new BufferedOutputStream(out))) {
-                    fillZip(base, base.getFileName().toString(), zout, true);
-                }
-                break;
-            case "zip.nd":
-                try (ZipOutputStream zout = new ZipOutputStream(
-                                            new BufferedOutputStream(out))) {
-                     fillZip(base, base.getFileName().toString(), zout, false);
+                    fillZip(base, base.getFileName().toString(), zout, format.endsWith(".nt"));
                 }
                 break;
             case "tgz":
+            case "tgz.nt":
                 try (TarArchiveOutputStream tout = new TarArchiveOutputStream(
                                                    new BufferedOutputStream(
                                                    new GzipCompressorOutputStream(out)))) {
-                    fillArchive(base, base.getFileName().toString(), tout, true);
-                }
-                break;
-            case "tgz.nd":
-                try (TarArchiveOutputStream tout = new TarArchiveOutputStream(
-                                                       new BufferedOutputStream(
-                                                       new GzipCompressorOutputStream(out)))) {
-                    fillArchive(base, base.getFileName().toString(), tout, false);
+                    fillArchive(base, base.getFileName().toString(), tout, format.endsWith(".nt"));
                 }
                 break;
             default:
@@ -589,16 +591,16 @@ public class Filler {
         }
     }
 
-    private void fillArchive(Path dirFile, String relBase, ArchiveOutputStream out, boolean keepDate) throws IOException {
+    private void fillArchive(Path dirFile, String relBase, ArchiveOutputStream out, boolean skipTime) throws IOException {
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(dirFile)) {
             for (Path file : stream) {
                 String relPath = relBase + '/' + file.getFileName().toString();
                 if (Files.isDirectory(file)) {
-                    fillArchive(file, relPath, out, keepDate);
+                    fillArchive(file, relPath, out, skipTime);
                 } else {
                     TarArchiveEntry entry = new TarArchiveEntry(relPath);
                     entry.setSize(Files.size(file));
-                    entry.setModTime(keepDate ? file.toFile().lastModified() : 0L);
+                    entry.setModTime(skipTime ? 0L : Files.getLastModifiedTime(file).toMillis());
                     out.putArchiveEntry(entry);
                     Files.copy(file, out);
                     out.closeArchiveEntry();
@@ -607,15 +609,17 @@ public class Filler {
         }
     }
 
-    private void fillZip(Path dirFile, String relBase, ZipOutputStream zout, boolean keepDate) throws IOException {
+    private void fillZip(Path dirFile, String relBase, ZipOutputStream zout, boolean skipTime) throws IOException {
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(dirFile)) {
             for (Path file : stream) {
                 String relPath = relBase + '/' + file.getFileName().toString();
                 if (Files.isDirectory(file)) {
-                    fillZip(file, relPath, zout, keepDate);
+                    fillZip(file, relPath, zout, skipTime);
                 } else {
                     ZipEntry entry = new ZipEntry(relPath);
-                    entry.setTime(keepDate ? file.toFile().lastModified() : 0L);
+                    BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
+                    entry.setCreationTime(skipTime ? FileTime.fromMillis(0L) : attrs.creationTime());
+                    entry.setLastModifiedTime(skipTime ? FileTime.fromMillis(0L) : attrs.lastModifiedTime());
                     zout.putNextEntry(entry);
                     Files.copy(file, zout);
                     zout.closeEntry();

@@ -80,7 +80,7 @@ public class Bagger {
             "-r    <bag path>=<URL> - payload reference\n" +
             "-t    [<bag path>=]<tag file>\n" +
             "-m    <name>=<value> - metadata statement\n" +
-            "-a    <archive format> - e.g. 'zip', 'zip.nd', 'tgz', 'tgz.nd' (default: loose directory)\n" +
+            "-a    <archive format> - e.g. 'zip', 'zip.nt', 'tgz', 'tgz.nt' (default: loose directory)\n" +
             "-c    <checksum algorithm> - default: 'MD5'\n" +
             "-o    <optimization flag>\n" +
             "-v    <level> - output level to console (default: 0 = no output)");
