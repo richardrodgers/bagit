@@ -32,6 +32,13 @@ dependencies {
     testCompile group: 'junit', name: 'junit', version: '4.11'
 }
 
+task fatJar(type: Jar) {
+    manifest { attributes("Main-Class": "edu.mit.lib.bagit.Bagger") }
+    baseName = archivesBaseName + '-all'
+    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}
+
 task sourcesJar(type: Jar) {
     classifier = 'sources'
     from sourceSets.main.allSource
