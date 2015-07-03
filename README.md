@@ -16,7 +16,7 @@ A helper class - bag _Filler_ - is used to orchestrate this assembly. Sequence: 
 The second (the _consumer_ pattern) is where a bag serialization (or a loose directory) is given and must
 be interpreted and validated for use. Here another helper class _Loader_ is used to deserialize.
 Sequence: new Loader -> load serialization -> convert to Bag -> process contents. If you have more complex needs
-in java, (e.g. support for multiple spec versions), you may wish to consider the [Library of Congress Java Library](https://github.com/anu-doi/bagit).
+in java, (e.g. support for multiple spec versions), you may wish to consider the [Library of Congress Java Library](https://github.com/LibraryOfCongress/bagit-java).
 
 ## Creating Bags (producer pattern) ##
 
@@ -105,7 +105,12 @@ to this degreee the bag contents are _tamper-proof_.
 The library bundles a very simple command-line tool called _Bagger_ that exposes much of the API.
 Sample invocation:
 
-    java Bagger fill newbag -p payloadFile -m Metadata-Name='metadata value'
+    java -cp <classpath> edu.mit.lib.bagit.Bagger fill newbag -p payloadFile -m Metadata-Name='metadata value'
+
+The Bagger command-line tool can be conveniently run from a so-called _fat_ jar that is a build option.
+Fat jars include all dependencies in a single executable jar (no classpath declaration required):
+
+    java -jar bagit-all-x.y.jar validate mybag
 
 ### Filler API Details ###
 
