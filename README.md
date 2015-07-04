@@ -146,6 +146,10 @@ Methods for adding metadata:
     filler.metadata(String name, String value)
     // set a metadata value in a named tagFile of the named property
     filler.metadata(String relPath, String name, String value)
+    // disable automatic metdata generation
+    filler.noAutoGen()
+    // set automatic metadata generation
+    filler.autoGen(Set<MetadataName> names)
 
 Methods for adding tag (metadata) files
 
@@ -210,6 +214,8 @@ Methods to obtain payload data:
     InputStream bag.payloadStream(String relPath)
     // get payload references
     Map<String, String> bag.payloadRefs()
+    // get payload file attributes
+    BasicFileAttributes bag.payloadFileAttributes(String relPath)
 
 Methods to obtain tag data:
 
@@ -217,6 +223,8 @@ Methods to obtain tag data:
     Path bag.tagFile(String relPath)
     // get an InputStream to a tag file
     InputStream bag.tagStream(String relPath)
+    // get tag file attributes
+    BasicFileAttributes bag.tagFileAttributes(String relPath)
 
 Methods to obtain tag metadata:
 

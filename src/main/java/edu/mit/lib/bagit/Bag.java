@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.security.DigestInputStream;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
@@ -73,7 +74,8 @@ public class Bag {
         BAG_GROUP_ID("Bag-Group-Identifier"),
         BAG_COUNT("Bag-Count"),
         INTERNAL_SENDER_ID("Internal-Sender-Identifier"),
-        INTERNAL_SENDER_DESC("Internal-Sender-Description");
+        INTERNAL_SENDER_DESC("Internal-Sender-Description"),
+        BAG_SOFTWARE_AGENT("Bag-Software-Agent");  // not in IETF spec
 
         private String mdName;
 
@@ -231,6 +233,18 @@ public class Bag {
     }
 
     /**
+     * Returns the payload file attributes of the passed relative path name.
+     * Useful for obtaining file info from sealed Bags
+     *
+     * @param relPath the relative path of the file from the data root directory
+     * @return the payload file attributes, or null if no file at the specified path
+     */
+    public BasicFileAttributes payloadFileAttributes(String relPath) throws IOException {
+        Path payload = dataFile(relPath);
+        return Files.exists(payload) ? Files.readAttributes(payload, BasicFileAttributes.class) : null;
+    }
+
+    /**
      * Returns an input stream for the passed payload relative path name
      *
      * @param relPath the relative path of the file from the data root directory
@@ -263,6 +277,18 @@ public class Bag {
         }
         Path tagFile = bagFile(relPath);
         return Files.exists(tagFile) ? tagFile : null;
+    }
+
+    /**
+     * Returns the tag file attributes of the passed relative path name.
+     * Useful for obtaining file info from sealed Bags
+     *
+     * @param relPath the relative path of the file from the bag root directory
+     * @return the tag file attributes, or null if no file at the specified path
+     */
+    public BasicFileAttributes tagFileAttributes(String relPath) throws IOException {
+        Path tagFile = bagFile(relPath);
+        return Files.exists(tagFile) ? Files.readAttributes(tagFile, BasicFileAttributes.class) : null;
     }
 
     /**

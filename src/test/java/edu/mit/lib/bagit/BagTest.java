@@ -15,7 +15,9 @@ import java.nio.file.Paths;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.Scanner;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import static java.nio.file.StandardCopyOption.*;
 
 import org.junit.Before;
@@ -165,6 +167,7 @@ public class BagTest {
         assertNotNull(bag.metadata(BAGGING_DATE));
         assertNotNull(bag.metadata(BAG_SIZE));
         assertNotNull(bag.metadata(PAYLOAD_OXUM));
+        assertNotNull(bag.metadata(BAG_SOFTWARE_AGENT));
         Path bagFile2 = tempFolder.newFolder("bag7").toPath();
         Filler filler2 = new Filler(bagFile2).payload("first.pdf", payload1);
         filler2.noAutoGen().metadata(SOURCE_ORG, val2);
@@ -172,6 +175,16 @@ public class BagTest {
         assertNull(bag2.metadata(BAGGING_DATE));
         assertNull(bag2.metadata(BAG_SIZE));
         assertNull(bag2.metadata(PAYLOAD_OXUM));
+        Path bagFile3 = tempFolder.newFolder("bag7a").toPath();
+        Filler filler3 = new Filler(bagFile3).payload("first.pdf", payload1);
+        Set<Bag.MetadataName> names = new HashSet<>();
+        names.add(BAG_SIZE);
+        names.add(PAYLOAD_OXUM);
+        filler3.autoGen(names);
+        Bag bag3 = new Loader(filler3.toDirectory()).load();
+        assertNull(bag3.metadata(BAGGING_DATE));
+        assertNotNull(bag3.metadata(BAG_SIZE));
+        assertNotNull(bag3.metadata(PAYLOAD_OXUM));
     }
 
     @Test
