@@ -57,6 +57,7 @@ public class Loader {
      * file (loose directory or archive file)
      *
      * @param file the base directory or archive file from which to extract the bag
+     * @throws IOException if error loading bag
      */
     public Loader(Path file) throws IOException {
         if (file == null || Files.notExists(file)) {
@@ -85,6 +86,7 @@ public class Loader {
      *
      * @param in the input stream containing the serialized bag
      * @param format the expected serialization format
+     * @throws IOException if error loading stream
      */
     public Loader(InputStream in, String format) throws IOException {
         this(null, in, format);
@@ -97,6 +99,7 @@ public class Loader {
      * @param parent the parent directory into which to extract the bag directory
      * @param in the input stream containing the serialized bag
      * @param format the expected serialization format
+     * @throws IOException if error loading stream
      */
     public Loader(Path parent, InputStream in, String format) throws IOException {
         Path theParent = (parent != null) ? parent : Files.createTempDirectory("bagparent");
@@ -107,6 +110,7 @@ public class Loader {
      * Returns the checksum algortihm used in bag manifests.
      *
      * @return algorithm the checksum algorithm
+     * @throws IOException if error loading bag
      */
     public String csAlgorithm() throws IOException {
         if (csAlg == null) {
@@ -119,6 +123,7 @@ public class Loader {
      * Returns sealed Bag from Loader. Sealed Bags cannot be serialized.
      *
      * @return bag the loaded sealed Bag instance
+     * @throws IOException if error loading bag
      */
     public Bag seal() throws IOException {
         finish();
@@ -129,6 +134,7 @@ public class Loader {
      * Returns Bag from Loader
      *
      * @return bag the loaded Bag instance
+     * @throws IOException if error loading bag
      */
     public Bag load() throws IOException {
         finish();
@@ -195,6 +201,7 @@ public class Loader {
      * Returns a map of payload files to fetch URLs (ie contents of fetch.txt).
      *
      * @return refMap the map of payload files to fetch URLs
+     * @throws IOException if error loading bag
      */
     public Map<String, String> payloadRefs() throws IOException {
         Path refFile = bagFile(REF_FILE);
@@ -210,6 +217,7 @@ public class Loader {
      *
      * @param relPath the bag-relative path to the payload file
      * @param is the content input stream for payload
+     * @throws IOException if error reading from input stream
      */
     public void resolveRef(String relPath, InputStream is) throws IOException {
         // various checks - is ref known?
