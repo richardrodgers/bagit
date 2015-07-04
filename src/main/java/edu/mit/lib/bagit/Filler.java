@@ -26,9 +26,11 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -38,6 +40,7 @@ import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
 
 import static edu.mit.lib.bagit.Bag.*;
+import static edu.mit.lib.bagit.Bag.MetadataName.*;
 
 /**
  * Filler is a builder class used to construct bags conformant to LC Bagit spec - version 0.97.
@@ -55,8 +58,8 @@ public class Filler {
     private Path base;
     // checksum algorithm
     private String csAlg;
-    // automatic metadata generation flag
-    private boolean autogen = true;
+    // automatic metadata generation set
+    private Set<MetadataName> autogenNames;
     // total payload size
     private long payloadSize = 0L;
     // number of payload files
@@ -118,16 +121,34 @@ public class Filler {
         manWriter = new FlatWriter(bagFile(MANIF_FILE + sfx), null, tagWriter, true);
         writers = new HashMap<>();
         streams = new HashMap<>();
+        // set up default auto-generated metadata
+        autogenNames = new HashSet<>();
+        autogenNames.add(BAGGING_DATE);
+        autogenNames.add(BAG_SIZE);
+        autogenNames.add(PAYLOAD_OXUM);
+        autogenNames.add(BAG_SOFTWARE_AGENT);
     }
 
     private void buildBag() throws IOException {
         if (built) return;
-        // if auto-generating metadata, do so
-        if (autogen) {
-            metadata(MetadataName.BAGGING_DATE, new SimpleDateFormat("yyyy-MM-dd").format(new Date()));
-            metadata(MetadataName.BAG_SIZE, scaledSize(payloadSize, 0));
-            metadata(MetadataName.PAYLOAD_OXUM, String.valueOf(payloadSize) + "." + String.valueOf(payloadCount));
-            metadata("Bag-Software-Agent", "MIT BagIt Lib v:" + LIB_VSN);
+        // if auto-generating any metadata, do so
+        Iterator<MetadataName> agIter = autogenNames.iterator();
+        while (agIter.hasNext()) {
+            switch (agIter.next()) {
+                 case BAGGING_DATE :
+                     metadata(BAGGING_DATE, new SimpleDateFormat("yyyy-MM-dd").format(new Date()));
+                     break;
+                 case BAG_SIZE :
+                     metadata(BAG_SIZE, scaledSize(payloadSize, 0));
+                     break;
+                 case PAYLOAD_OXUM :
+                     metadata(PAYLOAD_OXUM, String.valueOf(payloadSize) + "." + String.valueOf(payloadCount));
+                     break;
+                 case BAG_SOFTWARE_AGENT :
+                     metadata(BAG_SOFTWARE_AGENT, "MIT BagIt Lib v:" + LIB_VSN);
+                    break;
+                 default : break;
+            }
         }
         // close all optional writers' tag files
         Iterator<String> wIter = writers.keySet().iterator();
@@ -154,9 +175,22 @@ public class Filler {
     /**
      * Disables the automatic generation of metadata.
      * Normally generated: Bagging-Date, Bag-Size, Payload-Oxnum, Bag-Software-Agent
+     *
+     * @return Filler this Filler
      */
     public Filler noAutoGen() {
-        autogen = false;
+        return autoGen(new HashSet<MetadataName>());
+    }
+
+    /**
+     * Assigns the set of automatically generated metadata identifed by their names.
+     * Unknown or non-auto-assignable names will be ignored.
+     *
+     * @param names the set of metadata names
+     * @return Filler this Filler
+     */
+    public Filler autoGen(Set<MetadataName> names) {
+        autogenNames = names;
         return this;
     }
 
