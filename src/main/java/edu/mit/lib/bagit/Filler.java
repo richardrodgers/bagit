@@ -81,6 +81,7 @@ public class Filler {
      * temporary directory to hold bag and default checksum
      * algorithm (MD5).
      *
+     * @throws IOException if error creating bag
      */
     public Filler() throws IOException {
         this(null, null);
@@ -91,6 +92,7 @@ public class Filler {
      * directory to hold bag and default checksum algorithm (MD5).
      *
      * @param base the base directory in which to construct the bag
+     * @throws IOException if error creating bag
      */
     public Filler(Path base) throws IOException {
         this(base, null);
@@ -102,6 +104,7 @@ public class Filler {
      *
      * @param base directory for bag - if null, create temporary directory
      * @param csAlgorithm checksum algorithm string - if null use default
+     * @throws IOException if error creating bag
      */
     public Filler(Path base, String csAlgorithm) throws IOException {
         if (base != null) {
@@ -200,6 +203,7 @@ public class Filler {
      *
      * @param topFile the file to add to the payload
      * @return Filler this Filler
+     * @throws IOException if error reading/writing payload
      */
     public Filler payload(Path topFile) throws IOException {
         return payload(topFile.getFileName().toString(), topFile);
@@ -212,6 +216,7 @@ public class Filler {
      * @param relPath the relative path of the file
      * @param file the file path to add to the payload
      * @return Filler this Filler
+     * @throws IOException if error reading/writing payload
      */
     public Filler payload(String relPath, Path file) throws IOException {
         Path payloadFile = dataFile(relPath);
@@ -230,6 +235,7 @@ public class Filler {
      * @param relPath the relative path of the file
      * @param is the input stream to read.
      * @return Filler this Filler
+     * @throws IOException if error reading/writing payload
      */
     public Filler payload(String relPath, InputStream is) throws IOException {
         commitPayload(dataFile(relPath), relPath, is);
@@ -268,6 +274,7 @@ public class Filler {
      * @param size the expected size in bytes of the resource
      * @param url the URL of the resource
      * @return Filler this Filler
+     * @throws IOException if error reading/writing ref data
      */
     public Filler payloadRef(String relPath, long size, String url) throws IOException {
         FlatWriter refWriter = getWriter(REF_FILE);
@@ -283,6 +290,7 @@ public class Filler {
      *
      * @param relPath the relative path to the payload file
      * @return stream an output stream to payload file
+     * @throws IOException if error reading/writing payload
      */
     public OutputStream payloadStream(String relPath) throws IOException {
         if (Files.exists(dataFile(relPath))) {
@@ -298,6 +306,7 @@ public class Filler {
      * @param relPath the relative path of the file
      * @param file the path of the tag file to add
      * @return Filler this Filler
+     * @throws IOException if error reading/writing tag
      */
     public Filler tag(String relPath, Path file) throws IOException {
         return tag(relPath, Files.newInputStream(file));
@@ -310,6 +319,7 @@ public class Filler {
      * @param relPath the relative path of the file
      * @param is the input stream to read.
      * @return Filler this Filler
+     * @throws IOException if error reading/writing tag
      */
     public Filler tag(String relPath, InputStream is) throws IOException {
         // make sure tag files not written to payload directory
@@ -336,6 +346,7 @@ public class Filler {
      *
      * @param relPath the relative path to the tag file
      * @return stream an output stream to the tag file
+     * @throws IOException if error reading/writing tag
      */
     public OutputStream tagStream(String relPath) throws IOException {
         if (Files.exists(tagFile(relPath))) {
@@ -350,6 +361,8 @@ public class Filler {
      *
      * @param name the property name
      * @param value the property value
+     * @return filler this filler
+     * @throws IOException if error writing metadata
      */
     public Filler metadata(MetadataName name, String value) throws IOException {
         return property(META_FILE, name.getName(), value);
@@ -361,6 +374,8 @@ public class Filler {
      *
      * @param name the property name
      * @param value the property value
+     * @return filler this filler
+     * @throws IOException if error writing metadata
      */
     public Filler metadata(String name, String value) throws IOException {
         return property(META_FILE, name, value);
@@ -373,6 +388,8 @@ public class Filler {
      * @param relPath the bag-relative path to the property file
      * @param name the property name
      * @param value the property value
+     * @return filler this filler
+     * @throws IOException if error writing property
      */
     public Filler property(String relPath, String name, String value) throws IOException {
         FlatWriter writer = getWriter(relPath);
@@ -505,6 +522,7 @@ public class Filler {
      * Returns backing bag directory path.
      *
      * @return dir the bag directory path
+     * @throws IOException if error reading bag
      */
     public Path toDirectory() throws IOException {
         buildBag();
@@ -515,6 +533,7 @@ public class Filler {
      * Returns bag serialized as an archive file using default packaging (zip archive).
      *
      * @return path the bag archive package path
+     * @throws IOException if error reading bag
      */
     public Path toPackage() throws IOException {
         return toPackage(DFLT_FMT);
@@ -527,6 +546,7 @@ public class Filler {
      *
      * @param format the package format ('zip', or 'tgz')
      * @return path the bag archive package path
+     * @throws IOException if error reading bag
      */
     public Path toPackage(String format) throws IOException {
         return deflate(format);
@@ -537,6 +557,7 @@ public class Filler {
      * Bag is deleted when stream closed if temporary bag location used.
      *
      * @return file the bag archive package
+     * @throws IOException if error reading bag
      */
     public InputStream toStream() throws IOException {
         return toStream(DFLT_FMT);
@@ -549,6 +570,7 @@ public class Filler {
      *
      * @param format the package format ('zip', or 'tgz')
      * @return file the bag archive package
+     * @throws IOException if error reading bag
      */
     public InputStream toStream(String format) throws IOException {
         Path pkgFile = deflate(format);

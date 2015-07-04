@@ -100,9 +100,8 @@ public class Bag {
     /**
      * Constructor - creates a new bag from a Loader
      *
-     * @throws IOException
      */
-    Bag(Path baseDir, boolean sealed) throws IOException {
+    Bag(Path baseDir, boolean sealed) {
         this.baseDir = baseDir;
         this.sealed = sealed;
     }
@@ -138,6 +137,7 @@ public class Bag {
      * Returns the checksum algortihm used in bag manifests.
      *
      * @return algorithm the checksum algorithm
+     * @throws IOException if default algorithm unknown
      */
     public String csAlgorithm() throws IOException {
         return csAlgorithm(baseDir);
@@ -147,6 +147,7 @@ public class Bag {
      * Returns whether the bag is complete.
      *
      * @return complete true if bag is complete
+     * @throws IOException if unable to read bag contents
      */
     public boolean isComplete() throws IOException {
         // no fetch.txt?
@@ -201,6 +202,7 @@ public class Bag {
      * Returns whether the bag is valid.
      *
      * @return valid true if bag validates
+     * @throws IOException if unable to read bag contents
      */
     public boolean isValid() throws IOException {
         if (! isComplete()) return false;
@@ -223,6 +225,8 @@ public class Bag {
      *
      * @param relPath the relative path of the file from the data root directory
      * @return the payload file, or null if no file at the specified path
+     * @throws IOException if unaable to access bag
+     * @throws IllegalAccessException if bag is sealed
      */
     public Path payloadFile(String relPath) throws IOException, IllegalAccessException {
         if (sealed) {
@@ -238,6 +242,7 @@ public class Bag {
      *
      * @param relPath the relative path of the file from the data root directory
      * @return the payload file attributes, or null if no file at the specified path
+     * @throws IOException if unable to read file attributes
      */
     public BasicFileAttributes payloadFileAttributes(String relPath) throws IOException {
         Path payload = dataFile(relPath);
@@ -249,6 +254,7 @@ public class Bag {
      *
      * @param relPath the relative path of the file from the data root directory
      * @return in InputStream, or null if no file at the specified path
+     * @throws IOException if unable to open input stream
      */
     public InputStream payloadStream(String relPath) throws IOException {
         Path payload = dataFile(relPath);
@@ -260,6 +266,7 @@ public class Bag {
      * (i.e. contents of fetch.txt).
      *
      * @return refMap the map of payload files to fetch URLs
+     * @throws IOException if unable to read refs data
      */
     public Map<String, String> payloadRefs() throws IOException {
         return payloadRefs(bagFile(REF_FILE));
@@ -270,6 +277,8 @@ public class Bag {
      *
      * @param relPath the relative path of the file from the bag root directory
      * @return tagfile the tag file path, or null if no file at the specified path
+     * @throws IOException if unable to access tag file
+     * @throws IllegalAccessException if bag is sealed
      */
     public Path tagFile(String relPath) throws IOException, IllegalAccessException {
         if (sealed) {
@@ -285,6 +294,7 @@ public class Bag {
      *
      * @param relPath the relative path of the file from the bag root directory
      * @return the tag file attributes, or null if no file at the specified path
+     * @throws IOException if unable to access tag file
      */
     public BasicFileAttributes tagFileAttributes(String relPath) throws IOException {
         Path tagFile = bagFile(relPath);
@@ -296,6 +306,7 @@ public class Bag {
      *
      * @param relPath the relative path of the file from the bag root directory
      * @return in InputStream, or null if no file at the specified path
+     * @throws IOException if unable to open tag file stream
      */
     public InputStream tagStream(String relPath) throws IOException {
         Path tagFile = bagFile(relPath);
@@ -308,6 +319,7 @@ public class Bag {
      *
      * @param mdName the metadata property name
      * @return values property values for passed name, or empty list if no such property defined.
+     * @throws IOException if unable to read metadata
      */
     public List<String> metadata(MetadataName mdName) throws IOException {
         return metadata(mdName.getName());
@@ -319,6 +331,7 @@ public class Bag {
      *
      * @param name the metadata property name
      * @return values property value for passed name, or empty list if no such property defined.
+     * @throws IOException if unable to read metadata
      */
     public List<String> metadata(String name) throws IOException {
         return property(META_FILE, name);
@@ -331,6 +344,7 @@ public class Bag {
      * @param relPath bag-relative path to the property file
      * @param name the property name
      * @return values property value for passed name, or empty list if no such property defined.
+     * @throws IOException if unable to read metadata
      */
     public List<String> property(String relPath, String name) throws IOException {
         Map<String, List<String>> mdSet = mdCache.get(relPath);
@@ -369,6 +383,7 @@ public class Bag {
      * Contents are relative paths as keys and checksums as values.
      *
      * @return map a map of resource path names to checksums
+     * @throws IOException if unable to read manifest
      */
     public Map<String, String> payloadManifest() throws IOException {
         String sfx = csAlgorithm().toLowerCase() + ".txt";
@@ -380,6 +395,7 @@ public class Bag {
      * Contents are relative paths as keys and checksums as values.
      *
      * @return map a map of resource path names to checksums
+     * @throws IOException if unable to read tag manifest
      */
     public Map<String, String> tagManifest() throws IOException {
         String sfx = csAlgorithm().toLowerCase() + ".txt";
@@ -393,6 +409,7 @@ public class Bag {
      *
      * @param relPath the package-relative path to the manifest file
      * @return map a map of resource path names to checksums
+     * @throws IOException if unable to read manifest
      */
     public Map<String, String> manifest(String relPath) throws IOException {
         Map<String, String> mfMap = new HashMap<>();
