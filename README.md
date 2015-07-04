@@ -76,6 +76,8 @@ Or the bag contents may be obtained from a network stream:
 
     String bagId = new Loader(inputStream, "zip").load().metadata("External-Identifier");
 
+For all the API details consult the [Javadoc](http://richardrodgers.github.io/bagit/javadoc/index.html)
+
 ## Archive formats ##
 
 Bags are commonly serialized to standard archive formats such as ZIP. The library supports two archive formats:
@@ -98,7 +100,7 @@ change at will. However, if a bag is created as _sealed_ (a method on the Loader
 method calls that expose the underlying storage will throw IllegalAccess exceptions. So, for example,
 we would be _unable_ to obtain a File reference, but _could_ get an I/O stream to the same content.
 In other words, the content can be accessed, but the underlying representation cannot be altered, and
-to this degreee the bag contents are _tamper-proof_.
+to this degree the bag contents are _tamper-proof_.
 
 ## Bagger on the command line ##
 
@@ -112,125 +114,19 @@ Fat jars include all dependencies in a single executable jar (no classpath decla
 
     java -jar bagit-all-x.y.jar validate mybag
 
-### Filler API Details ###
+### Download ###
 
-NB: For a complete run-down, generate the javadoc for the package.
+The distribution jars are kept at [Bintray](https://bintray.com), so make sure that repository is declared.
+Then (NB: using the most current version), for Gradle:
 
-Constructors:
+    compile 'edu.mit.lib:bagit:0.6'
 
-    // create a Filler using temporary backing directory and default checksum algorithm
-    Filler()
-    // create a Filler putting bag in passed directory and default checksum algorithm
-    Filler(Path file)
-    // create a Filler putting bag in passed directory with passed checkSum algorithm
-    Filler(Path file, String csAlgorithm)
+or Maven:
 
-Methods for adding payload content:
+    <dependency>
+      <groupId>edu.mit.lib</groupId>
+      <artifactId>bagit</artifactId>
+      <version>0.6</version>
+    </dependency>
 
-    // copy payload file to root directory ('data') using it's name
-    filler.payload(Path file)
-    // copy payload file to relative path under data directory
-    filler.payload(String relPath, Path file)
-    // write payload stream to relative path under data directory
-    filler.payload(String relPath, InputStream stream)
-    // add a file URL reference to fetch.txt
-    filler.payloadRef(String relPath, log size, String url)
-    // obtain a writer stream to a relative path under data directory
-    OutputStream filler.payloadStream(String relPath)
-
-Methods for adding metadata:
-
-    // set a metadata value for a reserved property
-    filler.metadata(MetadataName mdName, String value)
-    // set a metadata value for the named property
-    filler.metadata(String name, String value)
-    // set a metadata value in a named tagFile of the named property
-    filler.metadata(String relPath, String name, String value)
-    // disable automatic metdata generation
-    filler.noAutoGen()
-    // set automatic metadata generation
-    filler.autoGen(Set<MetadataName> names)
-
-Methods for adding tag (metadata) files
-
-    // write tag file to relative path in bag
-    filler.tag(String relPath, Path file)
-    // write tag stream to relative path in bag
-    filler.tag(String relPath, InputStream stream)
-    // obtain a writer to a relative path  in bag
-    OutputStream filler.tagStream(String relPath)
-
-Methods for manifesting bags:
-
-    // create bag in loose directory from Filler data
-    Path filler.toDirectory()
-    // create bag in archive package from Filler data
-    Path filler.toPackage()
-    // create bag I/O stream from Filler data
-    InputStream filler.toStream()
-    // obtain manifest data without manifesting bag
-    List<String> getManifest()
-
-### Loader API Details ###
-
-Constructors:
-
-    // create a Loader from contents of directory or archive file
-    Loader(Path file)
-    // create a Loader from contents of input stream of expected package format
-    Loader(InputStream stream, String format)
-    // create a Loader at specified directory from contents of input stream of expected package format
-    Loader(Path file, InputStream stream, String format)
-
-Methods for instantiating bags:
-
-    // create bag from Loader data
-    Bag loader.load()
-    // create sealed (tamper-proof) bag from Loader data
-    Bag loader.seal()
-
-### Bag API Details ###
-
-Methods for bag definition and status:
-
-    // name of the bag
-    String bag.bagName()
-    // version of the BagIt spec bag adheres to
-    String Bag.bagItVersion()
-     // version of the library used to make bag
-    String Bag.libVersion()
-    // is bag complete?
-    boolean bag.isComplete()
-    // is bag sealed?
-    boolean bag.isSealed()
-    // is the bag valid?
-    boolean bag.isValid()
-
-Methods to obtain payload data:
-
-    // get a payload file
-    Path bag.payloadFile(String relPath)
-    // get an InputStream to a payload file
-    InputStream bag.payloadStream(String relPath)
-    // get payload references
-    Map<String, String> bag.payloadRefs()
-    // get payload file attributes
-    BasicFileAttributes bag.payloadFileAttributes(String relPath)
-
-Methods to obtain tag data:
-
-    // get a tag file
-    Path bag.tagFile(String relPath)
-    // get an InputStream to a tag file
-    InputStream bag.tagStream(String relPath)
-    // get tag file attributes
-    BasicFileAttributes bag.tagFileAttributes(String relPath)
-
-Methods to obtain tag metadata:
-
-    // get metadata value(s) for a reserved property
-    List<String> bag.metadata(MetadataName mdName)
-    // get metadata value(s) for the named property
-    List<String> bag.metadata(String name)
-    // get metadata value(s) from a named tag on relative path of the named property
-    List<String> bag.metadata(String relPath, String name)
+in a standard pom.xml dependencies block.
