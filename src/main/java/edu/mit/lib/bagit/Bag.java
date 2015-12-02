@@ -44,7 +44,7 @@ public class Bag {
     static final String ENCODING = "UTF-8";
     static final String CS_ALGO = "MD5";
     static final String BAGIT_VSN = "0.97";
-    static final String LIB_VSN = "0.6";
+    static final String LIB_VSN = "0.7";
     static final String DFLT_FMT = "zip";
     static final String TGZIP_FMT = "tgz";
     static final String SPACER = "  ";

@@ -41,6 +41,7 @@ import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
 
 import static edu.mit.lib.bagit.Bag.*;
 import static edu.mit.lib.bagit.Bag.MetadataName.*;
+import static edu.mit.lib.bagit.Filler.EolRule.*;
 
 /**
  * Filler is a builder class used to construct bags conformant to LC Bagit spec - version 0.97.
@@ -75,38 +76,82 @@ public class Filler {
     private boolean built;
     // transient bag?
     private boolean transientBag;
+    // line separator used by FlatWriters
+    private final String lineSeparator;
+
+    /**
+     * Rule for assigning the EOL (line termination/separation)
+     */
+    public enum EolRule {
+        /**
+         * Use system-defined separator
+         */
+        SYSTEM,
+        /**
+         * Use Windows separators on Unix systems,
+         * or vice versa
+         */
+        COUNTER_SYSTEM,
+        /**
+         * Use Unix new-line '\n' separators
+         */
+        UNIX,
+        /**
+         * Use Windows CR/LF separators
+         */
+        WINDOWS
+    }
 
     /**
      * Returns a new Filler (bag builder) instance using
-     * temporary directory to hold bag and default checksum
-     * algorithm (MD5).
+     * temporary directory to hold bag, default checksum
+     * algorithm (MD5), and system-defined line separator
      *
      * @throws IOException if error creating bag
      */
     public Filler() throws IOException {
-        this(null, null);
+        this(null, null, SYSTEM);
     }
 
     /**
      * Returns a new Filler (bag builder) instance using passed
-     * directory to hold bag and default checksum algorithm (MD5).
+     * directory to hold bag, default checksum algorithm (MD5),
+     * and system-defined line separator
      *
      * @param base the base directory in which to construct the bag
      * @throws IOException if error creating bag
      */
     public Filler(Path base) throws IOException {
-        this(base, null);
+        this(base, null, SYSTEM);
     }
 
     /**
      * Returns a new filler (bag builder) instances using passed directory
-     * and checksum algorithm.
+     * and checksum algorithm, and system-defined line separator
      *
      * @param base directory for bag - if null, create temporary directory
      * @param csAlgorithm checksum algorithm string - if null use default
      * @throws IOException if error creating bag
      */
     public Filler(Path base, String csAlgorithm) throws IOException {
+        this(base, csAlgorithm, SYSTEM);
+    }
+
+    /**
+     * Returns a new filler (bag builder) instances using passed directory,
+     * checksum algorithm, and line separator for text files.
+     *
+     * @param base directory for bag - if null, create temporary directory
+     * @param csAlgorithm checksum algorithm string - if null use default
+     * @param eolRule line termination rule to use for generated text files. Values are:
+     *            SYSTEM - use system-defined line termination
+     *            COUNTER_SYSTEM - if on Windows, use Unix EOL, else reverse
+     *            UNIX - use newline character line termination
+     *            WINDOWS - use CR/LF line termination
+     *
+     * @throws IOException if error creating bag
+     */
+    public Filler(Path base, String csAlgorithm, EolRule eolRule) throws IOException {
         if (base != null) {
             this.base = base;
         } else {
@@ -130,6 +175,14 @@ public class Filler {
         autogenNames.add(BAG_SIZE);
         autogenNames.add(PAYLOAD_OXUM);
         autogenNames.add(BAG_SOFTWARE_AGENT);
+        String sysEol = System.lineSeparator();
+        switch (eolRule) {
+            case SYSTEM: lineSeparator = sysEol; break;
+            case UNIX: lineSeparator = "\n"; break;
+            case WINDOWS: lineSeparator = "\r\n"; break;
+            case COUNTER_SYSTEM: lineSeparator = "\n".equals(sysEol) ? "\r\n" : "\n"; break;
+            default: lineSeparator = sysEol; break;
+        }
     }
 
     private void buildBag() throws IOException {
@@ -468,7 +521,7 @@ public class Filler {
             if (record) {
               lines.add(line);
             }
-            byte[] bytes = (line + "\n").getBytes(ENCODING);
+            byte[] bytes = (line + lineSeparator).getBytes(ENCODING);
             write(bytes);
         }
 

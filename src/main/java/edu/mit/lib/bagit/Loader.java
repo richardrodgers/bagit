@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.Scanner;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -51,6 +52,8 @@ public class Loader {
     private final ConcurrentMap<String, String> payloadRefMap = new ConcurrentHashMap<>();
     // manifest writer
     private LoaderWriter manWriter;
+    // line separator discovered in Bag text file
+    private String lineSeparator = System.lineSeparator();
 
    /**
      * Returns a new Loader (bag loader) instance using passed
@@ -107,7 +110,7 @@ public class Loader {
     }
 
     /**
-     * Returns the checksum algortihm used in bag manifests.
+     * Returns the checksum algorithm used in bag manifests.
      *
      * @return algorithm the checksum algorithm
      * @throws IOException if error loading bag
@@ -147,11 +150,10 @@ public class Loader {
             manWriter.close();
             // Update fetch.txt - remove if all holes plugged, else filter
             Path refFile = bagFile(REF_FILE);
-            List<String> refLines = bufferFile(refFile);
             if (payloadRefMap.size() > 0) {
                 // now reconstruct fetch.txt filtering out those resolved
                 try (OutputStream refOut = Files.newOutputStream(refFile)) {
-                    for (String refline : refLines) {
+                    for (String refline : bufferFile(refFile)) {
                         String[] parts = refline.split(" ");
                         if (payloadRefMap.containsKey(parts[2])) {
                             refOut.write(refline.getBytes(ENCODING));
@@ -172,10 +174,10 @@ public class Loader {
                 for (String tline : tmLines) {
                     String[] parts = tline.split(" ");
                     if (parts[1].startsWith(MANIF_FILE)) {
-                        tagManOut.write((manCS + " " + MANIF_FILE + sfx + "\n").getBytes(ENCODING));
+                        tagManOut.write((manCS + " " + MANIF_FILE + sfx + lineSeparator).getBytes(ENCODING));
                     } else if (parts[1].startsWith(REF_FILE)) {
                         if (fetchCS != null) {
-                            tagManOut.write((fetchCS + " " + REF_FILE + sfx + "\n").getBytes(ENCODING));
+                            tagManOut.write((fetchCS + " " + REF_FILE + sfx + lineSeparator).getBytes(ENCODING));
                         }
                     } else {
                         tagManOut.write(tline.getBytes(ENCODING));
@@ -190,7 +192,7 @@ public class Loader {
         try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             String line = null;
             while ((line = reader.readLine()) != null) {
-                lines.add(line + "\n");
+                lines.add(line + lineSeparator);
             }
         }
         Files.delete(file);
@@ -257,8 +259,12 @@ public class Loader {
     // lazy initialization of manifest writer
     private synchronized LoaderWriter manifestWriter() throws IOException {
         if (manWriter == null) {
-            String sfx = csAlgorithm().toLowerCase() + ".txt";
-            manWriter = new LoaderWriter(bagFile(MANIF_FILE + sfx), null, true, null);
+            Path manif = bagFile(MANIF_FILE + csAlgorithm().toLowerCase() + ".txt");
+            // set line separator for writer to match existing file encoding
+            try (Scanner sc = new Scanner(manif)) {
+                lineSeparator = (sc.findWithinHorizon("\r\n", 500) != null) ? "\r\n" : "\n";
+            }
+            manWriter = new LoaderWriter(manif, null, true, null);
         }
         return manWriter;
     }
@@ -270,7 +276,7 @@ public class Loader {
         }
 
         public void writeLine(String line) throws IOException {
-            write((line + "\n").getBytes(ENCODING));
+            write((line + lineSeparator).getBytes(ENCODING));
         }
     }
 
