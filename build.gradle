@@ -17,7 +17,7 @@ sourceCompatibility = 1.8
 
 group = 'edu.mit.lib'
 archivesBaseName = 'bagit'
-version = '0.6'
+version = '0.7'
 description = 'Compact Java BagIt library'
 
 ext {
@@ -44,7 +44,7 @@ task sourcesJar(type: Jar) {
     from sourceSets.main.allSource
 }
 
-task javadocJar(type: Jar) {
+task javadocJar(type: Jar, dependsOn: javadoc) {
     classifier = 'javadoc'
     from javadoc.destinationDir
 }

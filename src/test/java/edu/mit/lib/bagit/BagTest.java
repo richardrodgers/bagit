@@ -31,6 +31,7 @@ import static org.junit.Assert.*;
 
 import static edu.mit.lib.bagit.Bag.*;
 import static edu.mit.lib.bagit.Bag.MetadataName.*;
+import static edu.mit.lib.bagit.Filler.EolRule.*;
 
 /*
  * Basic unit tests for BagIt Library. Incomplete.
@@ -576,6 +577,77 @@ public class BagTest {
         Loader loader = new Loader(Files.newInputStream(fullBag), "zip");
         Bag loadedBag = loader.load();
         assertTrue(loadedBag.isValid());
+    }
+
+    @Test
+    public void defaultEOLInTextFiles() throws IOException {
+        Path bagFile = tempFolder.newFolder("bag32").toPath();
+        Filler filler = new Filler(bagFile);
+        OutputStream plout = filler.payloadStream("first.pdf");
+        for (int i = 0; i < 1000; i++) {
+            plout.write("lskdflsfevmep".getBytes());
+        }
+        Path fullBag = filler.toDirectory();
+        // use bag-info.txt as representative text-file
+        Path info = fullBag.resolve("bag-info.txt");
+        // line ending is same as system-defined one
+        assertTrue(new Loader(fullBag).load().isValid());
+        assertTrue(findSeparator(info).equals(System.lineSeparator()));
+    }
+
+    @Test
+    public void unixEOLInTextFiles() throws IOException {
+        Path bagFile = tempFolder.newFolder("bag33").toPath();
+        Filler filler = new Filler(bagFile, "MD5", Filler.EolRule.UNIX);
+        OutputStream plout = filler.payloadStream("first.pdf");
+        for (int i = 0; i < 1000; i++) {
+            plout.write("lskdflsfevmep".getBytes());
+        }
+        Path fullBag = filler.toDirectory();
+        // use bag-info.txt as representative text-file
+        Path info = fullBag.resolve("bag-info.txt");
+        // line ending is same as system-defined one
+        assertTrue(new Loader(fullBag).load().isValid());
+        assertTrue(findSeparator(info).equals("\n"));
+    }
+
+    @Test
+    public void windowsEOLInTextFiles() throws IOException {
+        Path bagFile = tempFolder.newFolder("bag34").toPath();
+        Filler filler = new Filler(bagFile, "MD5", Filler.EolRule.WINDOWS);
+        OutputStream plout = filler.payloadStream("first.pdf");
+        for (int i = 0; i < 1000; i++) {
+            plout.write("lskdflsfevmep".getBytes());
+        }
+        Path fullBag = filler.toDirectory();
+        // use bag-info.txt as representative text-file
+        Path info = fullBag.resolve("bag-info.txt");
+        // line ending is same as system-defined one
+        assertTrue(new Loader(fullBag).load().isValid());
+        assertTrue(findSeparator(info).equals("\r\n"));
+    }
+
+    @Test
+    public void counterEOLInTextFiles() throws IOException {
+        Path bagFile = tempFolder.newFolder("bag35").toPath();
+        Filler filler = new Filler(bagFile, "MD5", Filler.EolRule.COUNTER_SYSTEM);
+        OutputStream plout = filler.payloadStream("first.pdf");
+        for (int i = 0; i < 1000; i++) {
+            plout.write("lskdflsfevmep".getBytes());
+        }
+        Path fullBag = filler.toDirectory();
+        // use bag-info.txt as representative text-file
+        Path info = fullBag.resolve("bag-info.txt");
+        // line ending is not the same as system-defined one
+        assertTrue(new Loader(fullBag).load().isValid());
+        assertTrue(! findSeparator(info).equals(System.lineSeparator()));
+    }
+
+    private String findSeparator(Path file) throws IOException {
+        try (Scanner scanner = new Scanner(file)) {
+            // it's one or the other
+            return (scanner.findWithinHorizon("\r\n", 500) != null) ? "\r\n" : "\n";
+        }
     }
 
     private int lineCount(Path file) throws IOException {

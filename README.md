@@ -78,6 +78,18 @@ Or the bag contents may be obtained from a network stream:
 
 For all the API details consult the [Javadoc](http://richardrodgers.github.io/bagit/javadoc/index.html)
 
+## Portability ##
+
+Bags are intended to be portable data containers, in that one should be able to write them on one operating system,
+and read them on another. The spec contemplates this in specific ways, e.g. by allowing text files such as
+'bag-info.txt' legally to have _either_ Unix-style line termination, or Windows-style. Tools operating on bags ought
+to expect and tolerate this diversity, but do not always. The library provides some assistance here by allowing the user
+to specify a preference when creating bags. Thus, if the context of use (lifecycle) for a set of bags is known to be in
+a Windows environment, the library can be instructed to use Windows line termination for the generated text files in bags,
+even if the bags are being generated on a Unix system. By default, the library will use the termination of the
+operating system it is running on ('CR/LF' on Windows, '\n' on Unix and MacOS), but this can be overridden.
+See the [Javadoc](http://richardrodgers.github.io/bagit/javadoc/index.html) for details.
+
 ## Archive formats ##
 
 Bags are commonly serialized to standard archive formats such as ZIP. The library supports two archive formats:
@@ -119,14 +131,14 @@ Fat jars include all dependencies in a single executable jar (no classpath decla
 The distribution jars are kept at [Bintray](https://bintray.com), so make sure that repository is declared.
 Then (NB: using the most current version), for Gradle:
 
-    compile 'edu.mit.lib:bagit:0.6'
+    compile 'edu.mit.lib:bagit:0.7'
 
 or Maven:
 
     <dependency>
       <groupId>edu.mit.lib</groupId>
       <artifactId>bagit</artifactId>
-      <version>0.6</version>
+      <version>0.7</version>
     </dependency>
 
 in a standard pom.xml dependencies block.
