@@ -26,13 +26,14 @@ import java.util.Map;
 public class Bagger {
     /* A bit clunky in the cmd-line arg handling, but deliberately so as to limit
        external dependencies for those who want to only use the library API directly. */
-    private List<String> payloads = new ArrayList<>();
-    private List<String> references = new ArrayList<>();
-    private List<String> tags = new ArrayList<>();
-    private List<String> statements = new ArrayList<>();
+    private final List<String> payloads = new ArrayList<>();
+    private final List<String> references = new ArrayList<>();
+    private final List<String> tags = new ArrayList<>();
+    private final List<String> statements = new ArrayList<>();
     private String archFmt = "directory";
+    private boolean noTime = false;
     private String csAlg = "MD5";
-    private List<String> optFlags = new ArrayList<>();
+    private final List<String> optFlags = new ArrayList<>();
     private int verbosityLevel;
 
     public static void main(String[] args) throws IOException, IllegalAccessException {
@@ -47,6 +48,7 @@ public class Bagger {
                 case "-r": bagger.references.add(args[i+1]); break;
                 case "-t": bagger.tags.add(args[i+1]); break;
                 case "-m": bagger.statements.add(args[i+1]); break;
+                case "-n": bagger.noTime = Boolean.valueOf(args[i+1]); break;
                 case "-a": bagger.archFmt = args[i+1]; break;
                 case "-c": bagger.csAlg = args[i+1]; break;
                 case "-o": bagger.optFlags.add(args[i+1]); break;
@@ -80,7 +82,8 @@ public class Bagger {
             "-r    <bag path>=<URL> - payload reference\n" +
             "-t    [<bag path>=]<tag file>\n" +
             "-m    <name>=<value> - metadata statement\n" +
-            "-a    <archive format> - e.g. 'zip', 'zip.nt', 'tgz', 'tgz.nt' (default: loose directory)\n" +
+            "-a    <archive format> - e.g. 'zip', 'tgz', (default: loose directory)\n" +
+            "-n    <noTime> - 'true' or 'false'\n" +
             "-c    <checksum algorithm> - default: 'MD5'\n" +
             "-o    <optimization flag>\n" +
             "-v    <level> - output level to console (default: 0 = no output)");
@@ -121,11 +124,11 @@ public class Bagger {
             String[] parts = statement.split("=");
             filler.metadata(parts[0], parts[1]);
         }
-        Path bagPath = null;
+        Path bagPath;
         if (archFmt.equals("directory")) {
             bagPath = filler.toDirectory();
         } else {
-            bagPath = filler.toPackage(archFmt);
+            bagPath = filler.toPackage(archFmt, noTime);
         }
         if (verbosityLevel > 0) {
             message(bagPath.getFileName().toString(), true, "created");

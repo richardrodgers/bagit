@@ -6,10 +6,7 @@
 package edu.mit.lib.bagit;
 
 import java.io.BufferedOutputStream;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.FilterInputStream;
-import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -27,7 +24,6 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -188,33 +184,31 @@ public class Filler {
     private void buildBag() throws IOException {
         if (built) return;
         // if auto-generating any metadata, do so
-        Iterator<MetadataName> agIter = autogenNames.iterator();
-        while (agIter.hasNext()) {
-            switch (agIter.next()) {
-                 case BAGGING_DATE :
-                     metadata(BAGGING_DATE, new SimpleDateFormat("yyyy-MM-dd").format(new Date()));
-                     break;
-                 case BAG_SIZE :
-                     metadata(BAG_SIZE, scaledSize(payloadSize, 0));
-                     break;
-                 case PAYLOAD_OXUM :
-                     metadata(PAYLOAD_OXUM, String.valueOf(payloadSize) + "." + String.valueOf(payloadCount));
-                     break;
-                 case BAG_SOFTWARE_AGENT :
-                     metadata(BAG_SOFTWARE_AGENT, "MIT BagIt Lib v:" + LIB_VSN);
+        for (MetadataName autogenName : autogenNames) {
+            switch (autogenName) {
+                case BAGGING_DATE:
+                    metadata(BAGGING_DATE, new SimpleDateFormat("yyyy-MM-dd").format(new Date()));
                     break;
-                 default : break;
+                case BAG_SIZE:
+                    metadata(BAG_SIZE, scaledSize(payloadSize, 0));
+                    break;
+                case PAYLOAD_OXUM:
+                    metadata(PAYLOAD_OXUM, String.valueOf(payloadSize) + "." + String.valueOf(payloadCount));
+                    break;
+                case BAG_SOFTWARE_AGENT:
+                    metadata(BAG_SOFTWARE_AGENT, "MIT BagIt Lib v:" + LIB_VSN);
+                    break;
+                default:
+                    break;
             }
         }
         // close all optional writers' tag files
-        Iterator<String> wIter = writers.keySet().iterator();
-        while (wIter.hasNext()) {
-            getWriter(wIter.next()).close();
+        for (String s : writers.keySet()) {
+            getWriter(s).close();
         }
         // close all optional output streams
-        Iterator<String> sIter = streams.keySet().iterator();
-        while (sIter.hasNext()) {
-            getStream(null, sIter.next(), null, true).close();
+        for (String s : streams.keySet()) {
+            getStream(null, s, null, true).close();
         }
         // close the manifest file
         manWriter.close();
@@ -235,7 +229,7 @@ public class Filler {
      * @return Filler this Filler
      */
     public Filler noAutoGen() {
-        return autoGen(new HashSet<MetadataName>());
+        return autoGen(new HashSet<>());
     }
 
     /**
@@ -583,37 +577,38 @@ public class Filler {
     }
 
     /**
-     * Returns bag serialized as an archive file using default packaging (zip archive).
+     * Returns bag serialized as an archive file using default packaging (zip archive)
+     * assigning zip timestamps
      *
      * @return path the bag archive package path
      * @throws IOException if error reading bag
      */
     public Path toPackage() throws IOException {
-        return toPackage(DFLT_FMT);
+        return toPackage(DFLT_FMT, false);
     }
 
     /**
      * Returns bag serialized as an archive file using passed packaging format.
      * Supported formats: 'zip' - zip archive, 'tgz' - gzip compressed tar archive
-     *  'zip.nt' and 'tgz.nt' the same except file time attributes suppressed
      *
      * @param format the package format ('zip', or 'tgz')
+     * @param noTime if 'true', suppress regular timestamp assignment in archive
      * @return path the bag archive package path
      * @throws IOException if error reading bag
      */
-    public Path toPackage(String format) throws IOException {
-        return deflate(format);
+    public Path toPackage(String format, boolean noTime) throws IOException {
+        return deflate(format, noTime);
     }
 
     /**
      * Returns bag serialized as an IO stream using default packaging (zip archive).
      * Bag is deleted when stream closed if temporary bag location used.
      *
-     * @return file the bag archive package
+     * @return InputStream of the bag archive package
      * @throws IOException if error reading bag
      */
     public InputStream toStream() throws IOException {
-        return toStream(DFLT_FMT);
+        return toStream(DFLT_FMT, true);
     }
 
     /**
@@ -622,11 +617,12 @@ public class Filler {
      * Supported formats: 'zip' - zip archive, 'tgz' - gzip compressed tar archive
      *
      * @param format the package format ('zip', or 'tgz')
-     * @return file the bag archive package
+     * @param noTime if 'true', suppress regular timestamp assignment in archive
+     * @return InputStream of the bag archive package
      * @throws IOException if error reading bag
      */
-    public InputStream toStream(String format) throws IOException {
-        Path pkgFile = deflate(format);
+    public InputStream toStream(String format, boolean noTime) throws IOException {
+        Path pkgFile = deflate(format, noTime);
         if (transientBag) {
             return new CleanupInputStream(Files.newInputStream(pkgFile), pkgFile);
         } else {
@@ -636,7 +632,7 @@ public class Filler {
 
     class CleanupInputStream extends FilterInputStream {
 
-        private Path file;
+        private final Path file;
 
         public CleanupInputStream(InputStream in, Path file) {
             super(in);
@@ -666,33 +662,29 @@ public class Filler {
         } catch (IOException ioE) {}
     }
 
-    private Path deflate(String format) throws IOException {
+    private Path deflate(String format, boolean noTime) throws IOException {
         // deflate this bag in situ (in current directory) using given packaging format
         buildBag();
-        int ndIdx = format.indexOf(".nt");
-        String sfx = (ndIdx > 0) ? format.substring(0, ndIdx) : format;
-        Path pkgFile = base.getParent().resolve(base.getFileName().toString() + "." + sfx);
-        deflate(Files.newOutputStream(pkgFile), format);
+        Path pkgFile = base.getParent().resolve(base.getFileName().toString() + "." + format);
+        deflate(Files.newOutputStream(pkgFile), format, noTime);
         // remove base
         empty();
         return pkgFile;
     }
 
-    private void deflate(OutputStream out, String format) throws IOException {
+    private void deflate(OutputStream out, String format, boolean noTime) throws IOException {
         switch(format) {
             case "zip":
-            case "zip.nt":
                 try (ZipOutputStream zout = new ZipOutputStream(
                                             new BufferedOutputStream(out))) {
-                    fillZip(base, base.getFileName().toString(), zout, format.endsWith(".nt"));
+                    fillZip(base, base.getFileName().toString(), zout, noTime);
                 }
                 break;
             case "tgz":
-            case "tgz.nt":
                 try (TarArchiveOutputStream tout = new TarArchiveOutputStream(
                                                    new BufferedOutputStream(
                                                    new GzipCompressorOutputStream(out)))) {
-                    fillArchive(base, base.getFileName().toString(), tout, format.endsWith(".nt"));
+                    fillArchive(base, base.getFileName().toString(), tout, noTime);
                 }
                 break;
             default:
@@ -700,16 +692,16 @@ public class Filler {
         }
     }
 
-    private void fillArchive(Path dirFile, String relBase, ArchiveOutputStream out, boolean skipTime) throws IOException {
+    private void fillArchive(Path dirFile, String relBase, ArchiveOutputStream out, boolean noTime) throws IOException {
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(dirFile)) {
             for (Path file : stream) {
                 String relPath = relBase + '/' + file.getFileName().toString();
                 if (Files.isDirectory(file)) {
-                    fillArchive(file, relPath, out, skipTime);
+                    fillArchive(file, relPath, out, noTime);
                 } else {
                     TarArchiveEntry entry = new TarArchiveEntry(relPath);
                     entry.setSize(Files.size(file));
-                    entry.setModTime(skipTime ? 0L : Files.getLastModifiedTime(file).toMillis());
+                    entry.setModTime(noTime ? 0L : Files.getLastModifiedTime(file).toMillis());
                     out.putArchiveEntry(entry);
                     Files.copy(file, out);
                     out.closeArchiveEntry();
@@ -718,17 +710,17 @@ public class Filler {
         }
     }
 
-    private void fillZip(Path dirFile, String relBase, ZipOutputStream zout, boolean skipTime) throws IOException {
+    private void fillZip(Path dirFile, String relBase, ZipOutputStream zout, boolean noTime) throws IOException {
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(dirFile)) {
             for (Path file : stream) {
                 String relPath = relBase + '/' + file.getFileName().toString();
                 if (Files.isDirectory(file)) {
-                    fillZip(file, relPath, zout, skipTime);
+                    fillZip(file, relPath, zout, noTime);
                 } else {
                     ZipEntry entry = new ZipEntry(relPath);
                     BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
-                    entry.setCreationTime(skipTime ? FileTime.fromMillis(0L) : attrs.creationTime());
-                    entry.setLastModifiedTime(skipTime ? FileTime.fromMillis(0L) : attrs.lastModifiedTime());
+                    entry.setCreationTime(noTime ? FileTime.fromMillis(0L) : attrs.creationTime());
+                    entry.setLastModifiedTime(noTime ? FileTime.fromMillis(0L) : attrs.lastModifiedTime());
                     zout.putNextEntry(entry);
                     Files.copy(file, zout);
                     zout.closeEntry();

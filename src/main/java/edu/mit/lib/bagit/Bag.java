@@ -14,7 +14,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.DigestInputStream;
-import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -44,7 +43,7 @@ public class Bag {
     static final String ENCODING = "UTF-8";
     static final String CS_ALGO = "MD5";
     static final String BAGIT_VSN = "0.97";
-    static final String LIB_VSN = "0.7";
+    static final String LIB_VSN = "0.8";
     static final String DFLT_FMT = "zip";
     static final String TGZIP_FMT = "tgz";
     static final String SPACER = "  ";
@@ -77,9 +76,9 @@ public class Bag {
         INTERNAL_SENDER_DESC("Internal-Sender-Description"),
         BAG_SOFTWARE_AGENT("Bag-Software-Agent");  // not in IETF spec
 
-        private String mdName;
+        private final String mdName;
 
-        private MetadataName(String name) {
+        MetadataName(String name) {
             mdName = name;
         }
 
@@ -168,11 +167,9 @@ public class Bag {
         // # tag files and # manifest entries must agree
         // tag files consist of any top-level files except:
         // tagmanifest itself, and the payload directory.
-        DirectoryStream.Filter<Path> filter = new DirectoryStream.Filter<Path>() {
-            public boolean accept(Path file) throws IOException {
-                String name = file.getFileName().toString();
-                return ! (name.startsWith(TAGMANIF_FILE) || name.startsWith(DATA_DIR));
-            }
+        DirectoryStream.Filter<Path> filter = file -> {
+            String name = file.getFileName().toString();
+            return ! (name.startsWith(TAGMANIF_FILE) || name.startsWith(DATA_DIR));
         };
         int tagCount = 0;
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(baseDir, filter)) {
@@ -277,10 +274,9 @@ public class Bag {
      *
      * @param relPath the relative path of the file from the bag root directory
      * @return tagfile the tag file path, or null if no file at the specified path
-     * @throws IOException if unable to access tag file
      * @throws IllegalAccessException if bag is sealed
      */
-    public Path tagFile(String relPath) throws IOException, IllegalAccessException {
+    public Path tagFile(String relPath) throws IllegalAccessException {
         if (sealed) {
             throw new IllegalAccessException("Sealed Bag: no file access allowed");
         }
@@ -354,7 +350,7 @@ public class Bag {
                 try (BufferedReader reader = Files.newBufferedReader(bagFile(relPath), StandardCharsets.UTF_8)) {
                     String propName = null;
                     StringBuilder valSb = new StringBuilder();
-                    String line = null;
+                    String line;
                     while ((line = reader.readLine()) != null) {
                         // if line does not start with spacer, it is a new property
                         if (! line.startsWith(SPACER)) {
@@ -414,7 +410,7 @@ public class Bag {
     public Map<String, String> manifest(String relPath) throws IOException {
         Map<String, String> mfMap = new HashMap<>();
         try (BufferedReader reader = Files.newBufferedReader(bagFile(relPath), StandardCharsets.UTF_8)) {
-            String line = null;
+            String line;
             while((line = reader.readLine()) != null) {
                 String[] parts = line.split(" ");
                 mfMap.put(parts[1], parts[0]);
@@ -439,11 +435,7 @@ public class Bag {
     }
 
     private void addProp(String name, String value, Map<String, List<String>> mdSet) {
-        List<String> vals = mdSet.get(name);
-        if (vals == null) {
-            vals = new ArrayList<>();
-            mdSet.put(name, vals);
-        }
+        List<String> vals = mdSet.computeIfAbsent(name, k -> new ArrayList<>());
         vals.add(value.trim());
     }
 
@@ -484,7 +476,7 @@ public class Bag {
         Map<String, String> refMap = new HashMap<>();
         if (Files.exists(refFile)) {
             try (BufferedReader reader = Files.newBufferedReader(refFile, StandardCharsets.UTF_8)) {
-                String line = null;
+                String line;
                 while((line = reader.readLine()) != null) {
                     String[] parts = line.split(" ");
                     refMap.put(parts[2], parts[0]);
