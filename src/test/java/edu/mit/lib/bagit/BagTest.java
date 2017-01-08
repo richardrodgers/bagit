@@ -4,16 +4,12 @@
  */
 package edu.mit.lib.bagit;
 
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.FileTime;
 import java.util.Scanner;
 import java.util.HashSet;
 import java.util.Map;
@@ -43,7 +39,7 @@ public class BagTest {
     public Path payload1, payload2, tag1, tag2;
 
     @Rule
-    public TemporaryFolder tempFolder = new TemporaryFolder();
+    public final TemporaryFolder tempFolder = new TemporaryFolder();
 
     @Before
     public void createTestData() throws IOException {
@@ -227,8 +223,8 @@ public class BagTest {
         Path bagFile = tempFolder.newFolder("bag11").toPath();
         BasicFileAttributes beforeAttrs = Files.readAttributes(payload1, BasicFileAttributes.class);
         Filler filler = new Filler(bagFile).payload("first.pdf", payload1);
-        // 'zip' should preserve file time attrs
-        Path bagPackage = filler.toPackage("zip");
+        // should preserve file time attrs if noTime false
+        Path bagPackage = filler.toPackage("zip", false);
         Bag bag = new Loader(bagPackage).load();
         Path payload = bag.payloadFile("first.pdf");
         BasicFileAttributes afterAttrs = Files.readAttributes(payload, BasicFileAttributes.class);
@@ -241,8 +237,8 @@ public class BagTest {
         Path bagFile = tempFolder.newFolder("bag12").toPath();
         BasicFileAttributes beforeAttrs = Files.readAttributes(payload1, BasicFileAttributes.class);
         Filler filler = new Filler(bagFile).payload("first.pdf", payload1);
-        // 'zip.nt' should strip file time attrs
-        Path bagPackage = filler.toPackage("zip.nt");
+        // should strip file time attrs if noTime true
+        Path bagPackage = filler.toPackage("zip", true);
         Bag bag = new Loader(bagPackage).load();
         Path payload = bag.payloadFile("first.pdf");
         BasicFileAttributes afterAttrs = Files.readAttributes(payload, BasicFileAttributes.class);

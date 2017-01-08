@@ -6,15 +6,17 @@ commons compression library for support of tarred Gzip archive format (".tgz"), 
 
 [![Build Status](https://travis-ci.org/richardrodgers/bagit.svg?branch=master)]
 (https://travis-ci.org/richardrodgers/bagit)
+[![Dependency Status](https://dependencyci.com/github/richardrodgers/bagit/badge)]
+(https://dependencyci.com/github/richardrodgers/bagit)
 
 ## Use Cases ##
 
 The library attempts to simplify a few of the most common use cases/patterns involving bag packages.
 The first (the _producer_ pattern) is where content is assembled and placed into a bag, and the bag is then serialized
 for transport/hand-off to another component or system. The goal here is to ensure that the constructed bag is correct.
-A helper class - bag _Filler_ - is used to orchestrate this assembly. Sequence: new Filler -> add content -> add more content -> serialize.
+A helper class - _Filler_ - is used to orchestrate this assembly. Sequence: new Filler -> add content -> add more content -> serialize.
 The second (the _consumer_ pattern) is where a bag serialization (or a loose directory) is given and must
-be interpreted and validated for use. Here another helper class _Loader_ is used to deserialize.
+be interpreted and validated for use. Here another helper class - _Loader_ - is used to deserialize.
 Sequence: new Loader -> load serialization -> convert to Bag -> process contents. If you have more complex needs
 in java, (e.g. support for multiple spec versions), you may wish to consider the [Library of Congress Java Library](https://github.com/LibraryOfCongress/bagit-java).
 
@@ -35,7 +37,7 @@ archive. To convert the same bag to use a compressed tar format:
 
     InputStream bagStream = filler.toStream("tgz");
 
-We don't always need bag I/O streams - suppose we wish obtain a reference to an archive file object instead:
+We don't always want bag I/O streams - suppose we wish to obtain a bag archive file package instead:
 
     Path bagPackage = new Filler().payload(file1).metadata("External-Identifier", "mit.edu.0001").toPackage();
 
@@ -93,10 +95,10 @@ See the [Javadoc](http://richardrodgers.github.io/bagit/javadoc/index.html) for 
 ## Archive formats ##
 
 Bags are commonly serialized to standard archive formats such as ZIP. The library supports two archive formats:
-'zip' and 'tgz' and the variants 'zip.nt' and 'tgz.nt' (no time). If these variants are used, the library
-suppresses the file creation/modification time attributes, in order that checksums of archives produced at different times
-may accurately reflect only bag contents. That is, the checksum of a zip.nt bag (of the same name) is time-of-archiving-
-and filesystem-time-invariant, but content-sensitive.
+'zip' and 'tgz' and a variant in each of these. If the variant is used, the library suppresses the file
+creation/modification time attributes, in order that checksums of archives produced at different times
+may accurately reflect only bag contents. That is, the checksum of a zipped bag (with no timestamp variant) is
+time-of-archiving and filesystem-time-invariant, but content-sensitive. The variant is requested with an API call.
 
 ## Extras ##
 
@@ -131,14 +133,14 @@ Fat jars include all dependencies in a single executable jar (no classpath decla
 The distribution jars are kept at [Bintray](https://bintray.com), so make sure that repository is declared.
 Then (NB: using the most current version), for Gradle:
 
-    compile 'edu.mit.lib:bagit:0.7'
+    compile 'edu.mit.lib:bagit:0.8'
 
 or Maven:
 
     <dependency>
       <groupId>edu.mit.lib</groupId>
       <artifactId>bagit</artifactId>
-      <version>0.7</version>
+      <version>0.8</version>
     </dependency>
 
 in a standard pom.xml dependencies block.

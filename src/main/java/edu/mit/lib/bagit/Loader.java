@@ -20,7 +20,6 @@ import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentMap;
@@ -190,7 +189,7 @@ public class Loader {
     private List<String> bufferFile(Path file) throws IOException {
         List<String> lines = new ArrayList<>();
         try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-            String line = null;
+            String line;
             while ((line = reader.readLine()) != null) {
                 lines.add(line + lineSeparator);
             }
@@ -245,17 +244,6 @@ public class Loader {
         return base.resolve(name);
     }
 
-    private Path dataFile(String name) throws IOException {
-        // all user-defined files live in payload area - ie. under 'data'
-        Path dataFile = bagFile(DATA_DIR).resolve(name);
-        // create needed dirs
-        Path parentFile = dataFile.getParent();
-        if (! Files.isDirectory(parentFile)) {
-            Files.createDirectories(parentFile);
-        }
-        return dataFile;
-    }
-
     // lazy initialization of manifest writer
     private synchronized LoaderWriter manifestWriter() throws IOException {
         if (manWriter == null) {
@@ -264,15 +252,15 @@ public class Loader {
             try (Scanner sc = new Scanner(manif)) {
                 lineSeparator = (sc.findWithinHorizon("\r\n", 500) != null) ? "\r\n" : "\n";
             }
-            manWriter = new LoaderWriter(manif, null, true, null);
+            manWriter = new LoaderWriter(manif);
         }
         return manWriter;
     }
 
     class LoaderWriter extends LoaderOutputStream {
 
-        private LoaderWriter(Path file, String brPath, boolean append, LoaderWriter tailWriter) throws IOException {
-            super(file, brPath, append, tailWriter);
+        private LoaderWriter(Path file) throws IOException {
+            super(file);
         }
 
         public void writeLine(String line) throws IOException {
@@ -288,13 +276,13 @@ public class Loader {
         private final DigestOutputStream dout;
         private final LoaderWriter tailWriter;
 
-        private LoaderOutputStream(Path file, String relPath, boolean append, LoaderWriter tailWriter) throws IOException {
-            OpenOption opt = append ? StandardOpenOption.APPEND : StandardOpenOption.READ;
+        private LoaderOutputStream(Path file) throws IOException {
+            OpenOption opt = StandardOpenOption.APPEND;
             try {
                 out = Files.newOutputStream(file, opt);
                 dout = new DigestOutputStream(out, MessageDigest.getInstance(csAlg));
-                this.relPath = (relPath != null) ? relPath : file.getFileName().toString();
-                this.tailWriter = tailWriter;
+                this.relPath = file.getFileName().toString();
+                this.tailWriter = null;
             } catch (NoSuchAlgorithmException nsae) {
                 throw new IOException("no such algorithm: " + csAlg);
             }
@@ -320,7 +308,7 @@ public class Loader {
         switch (fmt) {
             case "zip" :
                 try (ZipInputStream zin = new ZipInputStream(in)) {
-                    ZipEntry entry = null;
+                    ZipEntry entry;
                     while((entry = zin.getNextEntry()) != null) {
                         if (base == null) {
                             base = parent.resolve(entry.getName().substring(0, entry.getName().indexOf("/")));
@@ -337,7 +325,7 @@ public class Loader {
             case "tgz" :
                 try (TarArchiveInputStream tin = new TarArchiveInputStream(
                                                  new GzipCompressorInputStream(in))) {
-                    TarArchiveEntry tentry = null;
+                    TarArchiveEntry tentry;
                     while((tentry = tin.getNextTarEntry()) != null) {
                         if (base == null) {
                             base = parent.resolve(tentry.getName().substring(0, tentry.getName().indexOf("/")));
