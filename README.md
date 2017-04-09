@@ -4,8 +4,7 @@ This project contains a lightweight java library to support creation and consump
 by the BagIt IETF Draft Spec version 0.97. It requires a Java 8 or better JRE to run, has a single dependency on the Apache
 commons compression library for support of tarred Gzip archive format (".tgz"), and is Apache 2 licensed. Build with Gradle or Maven.
 
-[![Build Status](https://travis-ci.org/richardrodgers/bagit.svg?branch=master)]
-(https://travis-ci.org/richardrodgers/bagit)
+[![Build Status](https://travis-ci.org/richardrodgers/bagit.svg?branch=master)](https://travis-ci.org/richardrodgers/bagit)
 [![Dependency Status](https://dependencyci.com/github/richardrodgers/bagit/badge)]
 (https://dependencyci.com/github/richardrodgers/bagit)
 
