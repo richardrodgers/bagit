@@ -10,6 +10,8 @@ import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,6 +29,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -55,6 +58,8 @@ public class Filler {
     private Path base;
     // checksum algorithm
     private String csAlg;
+    // Charset encoding for tag files
+    private Charset tagEncoding;
     // automatic metadata generation set
     private Set<MetadataName> autogenNames;
     // total payload size
@@ -101,44 +106,60 @@ public class Filler {
     /**
      * Returns a new Filler (bag builder) instance using
      * temporary directory to hold bag, default checksum
-     * algorithm (MD5), and system-defined line separator
+     * algorithm (MD5), default tag encoding (UTF-8),
+     * and system-defined line separator
      *
      * @throws IOException if error creating bag
      */
     public Filler() throws IOException {
-        this(null, null, SYSTEM);
+        this(null, null, null, SYSTEM);
     }
 
     /**
      * Returns a new Filler (bag builder) instance using passed
      * directory to hold bag, default checksum algorithm (MD5),
-     * and system-defined line separator
+     * default tag encoding (UTF-8), and system-defined line separator
      *
      * @param base the base directory in which to construct the bag
      * @throws IOException if error creating bag
      */
     public Filler(Path base) throws IOException {
-        this(base, null, SYSTEM);
+        this(base, null, null, SYSTEM);
     }
 
     /**
      * Returns a new filler (bag builder) instances using passed directory
-     * and checksum algorithm, and system-defined line separator
+     * and checksum algorithm, default tag encoding (UTF-8),
+     * and system-defined line separator
      *
      * @param base directory for bag - if null, create temporary directory
      * @param csAlgorithm checksum algorithm string - if null use default
      * @throws IOException if error creating bag
      */
     public Filler(Path base, String csAlgorithm) throws IOException {
-        this(base, csAlgorithm, SYSTEM);
+        this(base, csAlgorithm, null, SYSTEM);
+    }
+
+    /**
+     * Returns a new filler (bag builder) instances using passed directory
+     * checksum algorithm, and tag encoding, and system-defined line separator
+     *
+     * @param base directory for bag - if null, create temporary directory
+     * @param csAlgorithm checksum algorithm string - if null use default
+     * @param encoding tag encoding  - if null use default
+     * @throws IOException if error creating bag
+     */
+    public Filler(Path base, String csAlgorithm, Charset encoding) throws IOException {
+        this(base, csAlgorithm, encoding, SYSTEM);
     }
 
     /**
      * Returns a new filler (bag builder) instances using passed directory,
-     * checksum algorithm, and line separator for text files.
+     * checksum algorithm, tag encoding, and line separator for text files.
      *
      * @param base directory for bag - if null, create temporary directory
      * @param csAlgorithm checksum algorithm string - if null use default
+     * @param encoding character encoding to use for tag files - if null use default
      * @param eolRule line termination rule to use for generated text files. Values are:
      *            SYSTEM - use system-defined line termination
      *            COUNTER_SYSTEM - if on Windows, use Unix EOL, else reverse
@@ -147,7 +168,7 @@ public class Filler {
      *
      * @throws IOException if error creating bag
      */
-    public Filler(Path base, String csAlgorithm, EolRule eolRule) throws IOException {
+    public Filler(Path base, String csAlgorithm, Charset encoding, EolRule eolRule) throws IOException {
         if (base != null) {
             this.base = base;
         } else {
@@ -155,14 +176,15 @@ public class Filler {
             transientBag = true;
         }
         csAlg = (csAlgorithm != null) ? csAlgorithm : CS_ALGO;
+        tagEncoding = (encoding != null) ? encoding : StandardCharsets.UTF_8;
         Path dirPath = bagFile(DATA_DIR);
         if (Files.notExists(dirPath)) {
             Files.createDirectories(dirPath);
         }
         // prepare manifest writers
-        String sfx = csAlg.toLowerCase() + ".txt";
-        tagWriter = new FlatWriter(bagFile(TAGMANIF_FILE + sfx), null, null, false);
-        manWriter = new FlatWriter(bagFile(MANIF_FILE + sfx), null, tagWriter, true);
+        String sfx = csAlgoName(csAlg) + ".txt";
+        tagWriter = new FlatWriter(bagFile(TAGMANIF_FILE + sfx), null, null, false, tagEncoding);
+        manWriter = new FlatWriter(bagFile(MANIF_FILE + sfx), null, tagWriter, true, tagEncoding);
         writers = new HashMap<>();
         streams = new HashMap<>();
         // set up default auto-generated metadata
@@ -213,9 +235,9 @@ public class Filler {
         // close the manifest file
         manWriter.close();
         // write out bagit declaration file
-        FlatWriter fwriter = new FlatWriter(bagFile(DECL_FILE), null, tagWriter, false);
+        FlatWriter fwriter = new FlatWriter(bagFile(DECL_FILE), null, tagWriter, false, StandardCharsets.UTF_8);
         fwriter.writeLine("BagIt-Version: " + BAGIT_VSN);
-        fwriter.writeLine("Tag-File-Character-Encoding: " + ENCODING);
+        fwriter.writeLine("Tag-File-Character-Encoding: " + tagEncoding.name());
         fwriter.close();
         // close tag manifest file of previous tag files
         tagWriter.close();
@@ -295,7 +317,7 @@ public class Filler {
       }
       // wrap stream in digest stream
       try (DigestInputStream dis =
-          new DigestInputStream(is, MessageDigest.getInstance(csAlg))) {
+          new DigestInputStream(is, MessageDigest.getInstance(csAlgoCode(csAlg)))) {
           payloadSize += Files.copy(dis, payloadFile);
           payloadCount++;
           // record checksum
@@ -378,7 +400,7 @@ public class Filler {
         }
         // wrap stream in digest stream
         try (DigestInputStream dis =
-             new DigestInputStream(is, MessageDigest.getInstance(csAlg))) {
+             new DigestInputStream(is, MessageDigest.getInstance(csAlgoCode(csAlg)))) {
             Files.copy(dis, tagFile(relPath));
             // record checksum
             tagWriter.writeLine(toHex(dis.getMessageDigest().digest()) + " " + relPath);
@@ -473,7 +495,7 @@ public class Filler {
     private synchronized FlatWriter getWriter(String name) throws IOException {
         FlatWriter writer = writers.get(name);
         if (writer == null) {
-            writer = new FlatWriter(bagFile(name), null, tagWriter, false);
+            writer = new FlatWriter(bagFile(name), null, tagWriter, false, tagEncoding);
             writers.put(name, writer);
         }
         return writer;
@@ -492,10 +514,13 @@ public class Filler {
 
         private final List<String> lines = new ArrayList<>();
         private final boolean record;
+        private final Charset encoding;
+        private final AtomicBoolean bomOut = new AtomicBoolean();
 
-        private FlatWriter(Path file, String brPath, FlatWriter tailWriter, boolean record) throws IOException {
+        private FlatWriter(Path file, String brPath, FlatWriter tailWriter, boolean record, Charset encoding) throws IOException {
             super(file, brPath, tailWriter, false);
             this.record = record;
+            this.encoding = encoding;
         }
 
         public void writeProperty(String key, String value) throws IOException {
@@ -504,7 +529,7 @@ public class Filler {
             while (offset < prop.length()) {
                 int end = Math.min(prop.length() - offset, 80);
                 if (offset > 0) {
-                    write(SPACER.getBytes(ENCODING));
+                    write(filterBytes(SPACER, encoding, bomOut));
                 }
                 writeLine(prop.substring(offset, offset + end));
                 offset += end;
@@ -515,8 +540,7 @@ public class Filler {
             if (record) {
               lines.add(line);
             }
-            byte[] bytes = (line + lineSeparator).getBytes(ENCODING);
-            write(bytes);
+            write(filterBytes(line + lineSeparator, encoding, bomOut));
         }
 
         public List<String> getLines() {
@@ -537,7 +561,7 @@ public class Filler {
         private BagOutputStream(Path file, String relPath, FlatWriter tailWriter, boolean isPayload) throws IOException {
             try {
                 out = Files.newOutputStream(file);
-                dout = new DigestOutputStream(out, MessageDigest.getInstance(csAlg));
+                dout = new DigestOutputStream(out, MessageDigest.getInstance(csAlgoCode(csAlg)));
                 this.relPath = (relPath != null) ? relPath : file.getFileName().toString();
                 this.tailWriter = tailWriter;
                 this.isPayload = isPayload;

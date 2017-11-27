@@ -8,6 +8,7 @@ package edu.mit.lib.bagit;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -16,10 +17,12 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Bag represents a rudimentary bag conformant to LC Bagit spec - version 0.97.
@@ -40,10 +43,9 @@ import java.util.Map;
 
 public class Bag {
     // coding constants
-    static final String ENCODING = "UTF-8";
     static final String CS_ALGO = "MD5";
     static final String BAGIT_VSN = "0.97";
-    static final String LIB_VSN = "0.8";
+    static final String LIB_VSN = "0.9";
     static final String DFLT_FMT = "zip";
     static final String TGZIP_FMT = "tgz";
     static final String SPACER = "  ";
@@ -90,6 +92,12 @@ public class Bag {
     // directory root of bag
     private final Path baseDir;
 
+    // Checksum algorithm used in manifests
+    private final String csAlgorithm;
+
+    // Character encoding declared for tag files
+    private final Charset tagEncoding;
+
     // allow serialization, etc of bag
     private final boolean sealed;
 
@@ -100,9 +108,11 @@ public class Bag {
      * Constructor - creates a new bag from a Loader
      *
      */
-    Bag(Path baseDir, boolean sealed) {
+    Bag(Path baseDir, boolean sealed) throws IOException {
         this.baseDir = baseDir;
         this.sealed = sealed;
+        this.csAlgorithm = csAlgorithm(baseDir);
+        this.tagEncoding = tagEncoding(baseDir);
     }
 
     /**
@@ -139,7 +149,17 @@ public class Bag {
      * @throws IOException if default algorithm unknown
      */
     public String csAlgorithm() throws IOException {
-        return csAlgorithm(baseDir);
+        return csAlgorithm;
+    }
+
+    /**
+     * Returns the character encoding declared for tag files.
+     *
+     * @return declared character set encoding
+     * @throws IOException if encoding missing or unknown
+     */
+    public Charset tagEncoding() throws IOException {
+        return tagEncoding;
     }
 
     /**
@@ -149,18 +169,29 @@ public class Bag {
      * @throws IOException if unable to read bag contents
      */
     public boolean isComplete() throws IOException {
+        return completeStatus() == 0;
+    }
+
+    /**
+     * Returns completeness status code.
+     *
+     * @return status code for completeness: 0 is complete, negative is error code
+     * @throws IOException if unable to read bag contents
+     */
+    public int completeStatus() throws IOException {
         // no fetch.txt?
-        if (Files.exists(bagFile(REF_FILE))) return false;
-        // mandatory files present?
-        if (! (Files.exists(bagFile(DECL_FILE)) &&
-               Files.isDirectory(bagFile(DATA_DIR)))) return false;
+        if (Files.exists(bagFile(REF_FILE))) return -1;
+        // mandatory files present and correct?
+        if (! Files.exists(bagFile(DECL_FILE))) return -2;
+        if (! Charset.isSupported(tagEncoding.name())) return -3;
+        if (! Files.isDirectory(bagFile(DATA_DIR))) return -4;
         // payload files map?
         Map<String, String> payloads = payloadManifest();
         // # payload files and # manifest entries must agree
-        if (fileCount(bagFile(DATA_DIR)) != payloads.size()) return false;
+        if (fileCount(bagFile(DATA_DIR)) != payloads.size()) return -5;
         // files themselves must match also
         for (String path : payloads.keySet()) {
-            if (path.startsWith(DATA_DIR) && Files.notExists(bagFile(path))) return false;
+            if (path.startsWith(DATA_DIR) && Files.notExists(bagFile(path))) return -6;
         }
         // same drill for tag files
         Map<String, String> tags = tagManifest();
@@ -178,12 +209,12 @@ public class Bag {
                 else tagCount++;
             }
         }
-        if (tagCount != tags.size()) return false;
+        if (tagCount != tags.size()) return -7;
         // files themselves must match also
         for (String path : tags.keySet()) {
-            if (Files.notExists(bagFile(path))) return false;
+            if (Files.notExists(bagFile(path))) return -8;
         }
-        return true;
+        return 0;
     }
 
     /**
@@ -202,19 +233,31 @@ public class Bag {
      * @throws IOException if unable to read bag contents
      */
     public boolean isValid() throws IOException {
-        if (! isComplete()) return false;
+        return validationStatus() == 0;
+    }
+
+    /**
+     * Returns validation status code
+     *
+     * @return 0 if bag validates, else a negative number
+     * @throws IOException if unable to read bag contents
+     */
+    public int validationStatus() throws IOException {
+        int status = completeStatus();
+        if (status != 0) return status;
         // recompute all checksums and compare against manifest values
         Map<String, String> payloads = payloadManifest();
         for (String relPath : payloads.keySet()) {
-            String cutPath = relPath.substring(DATA_PATH.length());
-            if (! validateFile(payloadStream(cutPath), payloads.get(relPath), csAlgorithm())) return false;
+            int offset = relPath.startsWith("./") ? 2 : 0;
+            String cutPath = relPath.substring(DATA_PATH.length() + offset);
+            if (! validateFile(payloadStream(cutPath), payloads.get(relPath), csAlgorithm)) return -9;
         }
         // same for tag files
         Map<String, String> tags = tagManifest();
         for (String relPath : tags.keySet()) {
-            if (! validateFile(tagStream(relPath), tags.get(relPath), csAlgorithm())) return false;
+            if (! validateFile(tagStream(relPath), tags.get(relPath), csAlgorithm)) return -10;
         }
-        return true;
+        return 0;
     }
 
     /**
@@ -266,7 +309,7 @@ public class Bag {
      * @throws IOException if unable to read refs data
      */
     public Map<String, String> payloadRefs() throws IOException {
-        return payloadRefs(bagFile(REF_FILE));
+        return payloadRefs(bagFile(REF_FILE), tagEncoding);
     }
 
     /**
@@ -347,7 +390,7 @@ public class Bag {
         if (mdSet == null) {
             synchronized (mdCache) {
                 mdSet = new HashMap<>();
-                try (BufferedReader reader = Files.newBufferedReader(bagFile(relPath), StandardCharsets.UTF_8)) {
+                try (BufferedReader reader = Files.newBufferedReader(bagFile(relPath), tagEncoding)) {
                     String propName = null;
                     StringBuilder valSb = new StringBuilder();
                     String line;
@@ -382,7 +425,7 @@ public class Bag {
      * @throws IOException if unable to read manifest
      */
     public Map<String, String> payloadManifest() throws IOException {
-        String sfx = csAlgorithm().toLowerCase() + ".txt";
+        String sfx = csAlgoName(csAlgorithm) + ".txt";
         return manifest(MANIF_FILE + sfx);
     }
 
@@ -394,7 +437,7 @@ public class Bag {
      * @throws IOException if unable to read tag manifest
      */
     public Map<String, String> tagManifest() throws IOException {
-        String sfx = csAlgorithm().toLowerCase() + ".txt";
+        String sfx = csAlgoName(csAlgorithm) + ".txt";
         return manifest(TAGMANIF_FILE + sfx);
     }
 
@@ -409,10 +452,10 @@ public class Bag {
      */
     public Map<String, String> manifest(String relPath) throws IOException {
         Map<String, String> mfMap = new HashMap<>();
-        try (BufferedReader reader = Files.newBufferedReader(bagFile(relPath), StandardCharsets.UTF_8)) {
+        try (BufferedReader reader = Files.newBufferedReader(bagFile(relPath), tagEncoding)) {
             String line;
             while((line = reader.readLine()) != null) {
-                String[] parts = line.split(" ");
+                String[] parts = line.split("\\s+", 2);
                 mfMap.put(parts[1], parts[0]);
             }
         }
@@ -454,15 +497,15 @@ public class Bag {
         return baseDir.resolve(name);
     }
 
-    private boolean validateFile(InputStream is, String expectedChecksum, String csAlg) throws IOException {
-        byte[] buf = new byte[2048];
-        int num = 0;
+    private static boolean validateFile(InputStream is, String expectedChecksum, String csAlg) throws IOException {
         if (is == null) {
             throw new IOException("no input");
         }
+        byte[] buf = new byte[2048];
+        int num = 0;
         // wrap stream in digest stream
         try (DigestInputStream dis =
-            new DigestInputStream(is, MessageDigest.getInstance(csAlg))) {
+            new DigestInputStream(is, MessageDigest.getInstance(csAlgoCode(csAlg)))) {
             while (num != -1) {
                 num = dis.read(buf);
             }
@@ -472,13 +515,13 @@ public class Bag {
         }
     }
 
-    static Map<String, String> payloadRefs(Path refFile) throws IOException {
+    static Map<String, String> payloadRefs(Path refFile, Charset encoding) throws IOException {
         Map<String, String> refMap = new HashMap<>();
         if (Files.exists(refFile)) {
-            try (BufferedReader reader = Files.newBufferedReader(refFile, StandardCharsets.UTF_8)) {
+            try (BufferedReader reader = Files.newBufferedReader(refFile, encoding)) {
                 String line;
                 while((line = reader.readLine()) != null) {
-                    String[] parts = line.split(" ");
+                    String[] parts = line.split("\\s+");
                     refMap.put(parts[2], parts[0]);
                 }
             }
@@ -497,6 +540,45 @@ public class Bag {
         }
         // if no any manifest files, return null
         return null;
+    }
+
+    static Charset tagEncoding(Path base) throws IOException {
+        try (BufferedReader reader = Files.newBufferedReader(base.resolve(DECL_FILE), StandardCharsets.UTF_8)) {
+            // second line has encoding
+            reader.readLine();
+            String line = reader.readLine();
+            if (line != null) {
+                String[] parts = line.split(":");
+                return Charset.forName(parts[1].trim());
+            }
+        }
+        return Charset.defaultCharset();
+    }
+
+    static String csAlgoName(String csAlgol) {
+        return csAlgol.toLowerCase().replace("-","");
+    }
+
+    static String csAlgoCode(String csAlgol) {
+        String csa = csAlgol.toUpperCase();
+        if (csa.startsWith("SHA") && csa.indexOf("-") == -1) {
+            return "SHA-" + csa.substring(3);
+        } else {
+            return csa;
+        }
+    }
+
+    static byte[] filterBytes(String data, Charset encoding, AtomicBoolean bomOut) {
+        byte[] dbytes = data.getBytes(encoding);
+        if (bomOut.compareAndSet(false, true)) {
+            return dbytes;
+        } else if (encoding.equals(StandardCharsets.UTF_16) ||
+                   encoding.equals(StandardCharsets.UTF_16BE) ||
+                   encoding.equals(StandardCharsets.UTF_16LE)) {
+            return Arrays.copyOfRange(dbytes, 2, dbytes.length);
+        } else {
+            return dbytes;
+        }
     }
 
     private static final char[] HEX_CHARS = "0123456789abcdef".toCharArray();

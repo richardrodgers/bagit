@@ -7,6 +7,7 @@ package edu.mit.lib.bagit;
 
 import java.io.IOException;
 import java.net.URL;
+import java.nio.charset.Charset;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -33,6 +34,7 @@ public class Bagger {
     private String archFmt = "directory";
     private boolean noTime = false;
     private String csAlg = "MD5";
+    private Charset tagEnc = Charset.defaultCharset();
     private final List<String> optFlags = new ArrayList<>();
     private int verbosityLevel;
 
@@ -51,6 +53,7 @@ public class Bagger {
                 case "-n": bagger.noTime = Boolean.valueOf(args[i+1]); break;
                 case "-a": bagger.archFmt = args[i+1]; break;
                 case "-c": bagger.csAlg = args[i+1]; break;
+                case "-e": bagger.tagEnc = Charset.forName(args[i+1]); break;
                 case "-o": bagger.optFlags.add(args[i+1]); break;
                 case "-v": bagger.verbosityLevel = Integer.parseInt(args[i+1]); break;
                 default: System.out.println("Unknown option: '" + args[i] + "'"); usage();
@@ -85,6 +88,7 @@ public class Bagger {
             "-a    <archive format> - e.g. 'zip', 'tgz', (default: loose directory)\n" +
             "-n    <noTime> - 'true' or 'false'\n" +
             "-c    <checksum algorithm> - default: 'MD5'\n" +
+            "-e    <tag file encoding> - default: 'UTF-8'\n" +
             "-o    <optimization flag>\n" +
             "-v    <level> - output level to console (default: 0 = no output)");
         System.out.println(
@@ -96,7 +100,7 @@ public class Bagger {
     private Bagger() {}
 
     private void fill(Path baseDir) throws IOException {
-        Filler filler = new Filler(baseDir, csAlg);
+        Filler filler = new Filler(baseDir, csAlg, tagEnc);
         if (optFlags.contains("nag")) {
             filler.noAutoGen();
         }
@@ -164,19 +168,21 @@ public class Bagger {
     }
 
     private void complete(Path bagPath) throws IOException {
-        boolean complete = new Loader(bagPath).load().isComplete();
+        int status = new Loader(bagPath).load().completeStatus();
+        boolean complete = status == 0;
         if (verbosityLevel > 0) {
            message(bagPath.getFileName().toString(), complete, "complete");
         }
-        System.exit(complete ? 0 : -1);
+        System.exit(status);
     }
 
     private void validate(Path bagPath) throws IOException {
-        boolean valid = new Loader(bagPath).load().isValid();
+        int status = new Loader(bagPath).load().validationStatus();
+        boolean valid = status == 0;
         if (verbosityLevel > 0) {
             message(bagPath.getFileName().toString(), valid, "valid");
         }
-        System.exit(valid ? 0 : -1);
+        System.exit(status);
     }
 
     private void message(String name, boolean ok, String value) {
