@@ -9,7 +9,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.Scanner;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -147,48 +148,50 @@ public class Loader {
         // if manWriter is non-null, some payload files were fetched.
         if (manWriter != null) {
             manWriter.close();
+            Charset encoding = tagEncoding(base);
+            AtomicBoolean bomOut = new AtomicBoolean();
             // Update fetch.txt - remove if all holes plugged, else filter
             Path refFile = bagFile(REF_FILE);
             if (payloadRefMap.size() > 0) {
                 // now reconstruct fetch.txt filtering out those resolved
                 try (OutputStream refOut = Files.newOutputStream(refFile)) {
-                    for (String refline : bufferFile(refFile)) {
-                        String[] parts = refline.split(" ");
-                        if (payloadRefMap.containsKey(parts[2])) {
-                            refOut.write(refline.getBytes(ENCODING));
+                    for (String refline : bufferFile(refFile, encoding)) {
+                        String[] parts = refline.split("\\s+");
+                        if (payloadRefMap.containsKey(parts[2].trim())) {
+                            refOut.write(filterBytes(refline, encoding, bomOut));
                         }
                     }
                 }
             }
             // update tagmanifest with new manifest checksum, fetch stuff
-            String sfx = csAlgorithm() + ".txt";
+            String sfx = csAlgoName(csAlgorithm()) + ".txt";
             Path tagManFile = bagFile(TAGMANIF_FILE + sfx);
-            List<String> tmLines = bufferFile(tagManFile);
             // now recompute manifest checksum
             String manCS = checksum(bagFile(MANIF_FILE + sfx), csAlgorithm());
             // likewise fetch.txt if it's still around
             String fetchCS = Files.exists(refFile) ? checksum(bagFile(MANIF_FILE + sfx), csAlgorithm()) : null;
             // recreate tagmanifest with new checksums
+            bomOut.set(false);
             try (OutputStream tagManOut = Files.newOutputStream(tagManFile)) {
-                for (String tline : tmLines) {
-                    String[] parts = tline.split(" ");
+                for (String tline : bufferFile(tagManFile, encoding)) {
+                    String[] parts = tline.split("\\s+");
                     if (parts[1].startsWith(MANIF_FILE)) {
-                        tagManOut.write((manCS + " " + MANIF_FILE + sfx + lineSeparator).getBytes(ENCODING));
+                        tagManOut.write(filterBytes(manCS + " " + MANIF_FILE + sfx + lineSeparator, encoding, bomOut));
                     } else if (parts[1].startsWith(REF_FILE)) {
                         if (fetchCS != null) {
-                            tagManOut.write((fetchCS + " " + REF_FILE + sfx + lineSeparator).getBytes(ENCODING));
+                            tagManOut.write(filterBytes(fetchCS + " " + REF_FILE + sfx + lineSeparator, encoding, bomOut));
                         }
                     } else {
-                        tagManOut.write(tline.getBytes(ENCODING));
+                        tagManOut.write(filterBytes(tline, encoding,bomOut));
                     }
                 }
             }
         }
     }
 
-    private List<String> bufferFile(Path file) throws IOException {
+    private List<String> bufferFile(Path file, Charset encoding) throws IOException {
         List<String> lines = new ArrayList<>();
-        try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+        try (BufferedReader reader = Files.newBufferedReader(file, encoding)) {
             String line;
             while ((line = reader.readLine()) != null) {
                 lines.add(line + lineSeparator);
@@ -208,7 +211,7 @@ public class Loader {
         Path refFile = bagFile(REF_FILE);
         if (payloadRefMap.isEmpty() && Files.exists(refFile)) {
             // load initial data
-            payloadRefMap.putAll(Bag.payloadRefs(refFile));
+            payloadRefMap.putAll(Bag.payloadRefs(refFile, tagEncoding(base)));
         }
         return payloadRefMap;
     }
@@ -229,7 +232,7 @@ public class Loader {
             throw new IllegalStateException("Payload file already exists at: " + relPath);
         }
         // wrap stream in digest stream
-        try (DigestInputStream dis = new DigestInputStream(is, MessageDigest.getInstance(csAlgorithm()))) {
+        try (DigestInputStream dis = new DigestInputStream(is, MessageDigest.getInstance(csAlgoCode(csAlg)))) {
             Files.copy(dis, bagFile(relPath));
             // record checksum
             manifestWriter().writeLine(toHex(dis.getMessageDigest().digest()) + " " + relPath);
@@ -247,24 +250,28 @@ public class Loader {
     // lazy initialization of manifest writer
     private synchronized LoaderWriter manifestWriter() throws IOException {
         if (manWriter == null) {
-            Path manif = bagFile(MANIF_FILE + csAlgorithm().toLowerCase() + ".txt");
+            Path manif = bagFile(MANIF_FILE + csAlgoName(csAlgorithm()) + ".txt");
             // set line separator for writer to match existing file encoding
             try (Scanner sc = new Scanner(manif)) {
                 lineSeparator = (sc.findWithinHorizon("\r\n", 500) != null) ? "\r\n" : "\n";
             }
-            manWriter = new LoaderWriter(manif);
+            manWriter = new LoaderWriter(manif, tagEncoding(base));
         }
         return manWriter;
     }
 
     class LoaderWriter extends LoaderOutputStream {
 
-        private LoaderWriter(Path file) throws IOException {
+        private final Charset encoding;
+        private final AtomicBoolean bomOut = new AtomicBoolean();
+
+        private LoaderWriter(Path file, Charset encoding) throws IOException {
             super(file);
+            this.encoding = encoding;
         }
 
         public void writeLine(String line) throws IOException {
-            write((line + lineSeparator).getBytes(ENCODING));
+            write(filterBytes(line + lineSeparator, encoding, bomOut));
         }
     }
 
@@ -280,7 +287,7 @@ public class Loader {
             OpenOption opt = StandardOpenOption.APPEND;
             try {
                 out = Files.newOutputStream(file, opt);
-                dout = new DigestOutputStream(out, MessageDigest.getInstance(csAlg));
+                dout = new DigestOutputStream(out, MessageDigest.getInstance(csAlgoCode(csAlg)));
                 this.relPath = file.getFileName().toString();
                 this.tailWriter = null;
             } catch (NoSuchAlgorithmException nsae) {
@@ -347,7 +354,7 @@ public class Loader {
         int num = 0;
         // wrap stream in digest stream
         try (InputStream is = Files.newInputStream(file);
-             DigestInputStream dis = new DigestInputStream(is, MessageDigest.getInstance(csAlg))) {
+             DigestInputStream dis = new DigestInputStream(is, MessageDigest.getInstance(csAlgoCode(csAlg)))) {
             while (num != -1) {
                 num = dis.read(buf);
             }

@@ -7,6 +7,8 @@ package edu.mit.lib.bagit;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.IOException;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -594,7 +596,7 @@ public class BagTest {
     @Test
     public void unixEOLInTextFiles() throws IOException {
         Path bagFile = tempFolder.newFolder("bag33").toPath();
-        Filler filler = new Filler(bagFile, "MD5", Filler.EolRule.UNIX);
+        Filler filler = new Filler(bagFile, "MD5", StandardCharsets.UTF_8, Filler.EolRule.UNIX);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
             plout.write("lskdflsfevmep".getBytes());
@@ -610,7 +612,7 @@ public class BagTest {
     @Test
     public void windowsEOLInTextFiles() throws IOException {
         Path bagFile = tempFolder.newFolder("bag34").toPath();
-        Filler filler = new Filler(bagFile, "MD5", Filler.EolRule.WINDOWS);
+        Filler filler = new Filler(bagFile, "MD5", StandardCharsets.UTF_8, Filler.EolRule.WINDOWS);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
             plout.write("lskdflsfevmep".getBytes());
@@ -626,7 +628,7 @@ public class BagTest {
     @Test
     public void counterEOLInTextFiles() throws IOException {
         Path bagFile = tempFolder.newFolder("bag35").toPath();
-        Filler filler = new Filler(bagFile, "MD5", Filler.EolRule.COUNTER_SYSTEM);
+        Filler filler = new Filler(bagFile, "MD5", StandardCharsets.UTF_8, Filler.EolRule.COUNTER_SYSTEM);
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
             plout.write("lskdflsfevmep".getBytes());
@@ -637,6 +639,23 @@ public class BagTest {
         // line ending is not the same as system-defined one
         assertTrue(new Loader(fullBag).load().isValid());
         assertTrue(! findSeparator(info).equals(System.lineSeparator()));
+    }
+
+    @Test
+    public void validAndInvalidBagUTF16() throws IOException {
+        Path bagFile = tempFolder.newFolder("bag36").toPath();
+        Filler filler = new Filler(bagFile, "MD5", StandardCharsets.UTF_16).payload("first.pdf", payload1);
+        Bag bag = new Loader(filler.toDirectory()).load();
+        Map<String, String> tman = bag.tagManifest();
+        assertTrue(tman.size() == 3);
+        assertTrue(tman.keySet().contains("bagit.txt"));
+        assertTrue(tman.keySet().contains("bag-info.txt"));
+        assertTrue(tman.keySet().contains("manifest-md5.txt"));
+        assertTrue(bag.isValid());
+        // now remove a payload file
+        Path toDel = bagFile.resolve("data/first.pdf");
+        Files.delete(toDel);
+        assertTrue(!bag.isValid());
     }
 
     private String findSeparator(Path file) throws IOException {
