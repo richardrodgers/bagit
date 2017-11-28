@@ -21,16 +21,20 @@ in java, (e.g. support for multiple spec versions), you may wish to consider the
 ## Creating Bags (producer pattern) ##
 
 A very simple 'fluent' builder interface is used to create bags, where content is added utilizing an object called
-a _Filler_. For example, to create a bag with a few files (here the java.nio.file.Path File instances 'file1', 'file2'):
+a _Filler_. For example, to create a bag with a few files (here the java.nio.file.Path instances 'file1', 'file2'):
 
     Filler filler = new Filler().payload(file1).payload(file2);
+
+Metadata (in tag files, default: _bag-info.txt_) can be added in the same fluent manner:
+
+    filler = filler.metadata("Contact-Name", "Joe Bloggs").metadata("Contact-Email", "bloggsj@gmail.com");
 
 Since bags are often used to _transmit_ packaged content, we would typically next obtain a serialization of the bag:
 
     InputStream bagStream = filler.toStream();
 
 This would be a very natural way to export bagged content to a network service. A few defaults are at work in
-this invocation, e.g. the 'toStream()' method with no arguments uses the default package serialization, which is a zip
+this invocation, e.g. the _toStream()_ method with no arguments uses the default package serialization, which is a zip
 archive. To convert the same bag to use a compressed tar format:
 
     InputStream bagStream = filler.toStream("tgz");
@@ -75,6 +79,10 @@ in this case is the 'Loader', which is used to produce Bag instances. Thus:
 Or the bag contents may be obtained from a network stream:
 
     String bagId = new Loader(inputStream, "zip").load().metadata("External-Identifier");
+
+If we wish to prevent manipulation of the hydrated bag (see below), we can seal it:
+
+    Bag bag = new Loader(secureZipFile).seal();
 
 For all the API details consult the [Javadoc](http://richardrodgers.github.io/bagit/javadoc/index.html)
 
@@ -131,14 +139,14 @@ Fat jars include all dependencies in a single executable jar (no classpath decla
 The distribution jars are kept at [Bintray](https://bintray.com), so make sure that repository is declared.
 Then (NB: using the most current version), for Gradle:
 
-    compile 'edu.mit.lib:bagit:0.8'
+    compile 'edu.mit.lib:bagit:0.9'
 
 or Maven:
 
     <dependency>
       <groupId>edu.mit.lib</groupId>
       <artifactId>bagit</artifactId>
-      <version>0.8</version>
+      <version>0.9</version>
     </dependency>
 
 in a standard pom.xml dependencies block.
