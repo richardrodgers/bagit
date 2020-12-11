@@ -7,11 +7,11 @@ package edu.mit.lib.bagit;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.IOException;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.time.temporal.ChronoUnit;
 import java.util.Scanner;
 import java.util.HashSet;
 import java.util.Map;
@@ -29,7 +29,6 @@ import static org.junit.Assert.*;
 
 import static edu.mit.lib.bagit.Bag.*;
 import static edu.mit.lib.bagit.Bag.MetadataName.*;
-import static edu.mit.lib.bagit.Filler.EolRule.*;
 
 /*
  * Basic unit tests for BagIt Library. Incomplete.
@@ -230,8 +229,28 @@ public class BagTest {
         Bag bag = new Loader(bagPackage).load();
         Path payload = bag.payloadFile("first.pdf");
         BasicFileAttributes afterAttrs = Files.readAttributes(payload, BasicFileAttributes.class);
-        assertTrue(beforeAttrs.creationTime().compareTo(afterAttrs.creationTime()) == 0);
-        assertTrue(beforeAttrs.lastModifiedTime().compareTo(afterAttrs.lastModifiedTime()) == 0);
+        // zip packages seem to lose millisecond precision in attributes, will agree in seconds
+        assertTrue(beforeAttrs.creationTime().toInstant().truncatedTo(ChronoUnit.SECONDS)
+        .compareTo(afterAttrs.creationTime().toInstant().truncatedTo(ChronoUnit.SECONDS)) == 0);
+        assertTrue(beforeAttrs.lastModifiedTime().toInstant().truncatedTo(ChronoUnit.SECONDS)
+        .compareTo(afterAttrs.lastModifiedTime().toInstant().truncatedTo(ChronoUnit.SECONDS)) == 0);
+    }
+
+    @Test
+    public void bagFileAttributesPreservedInTGZ() throws IOException, IllegalAccessException {
+        Path bagFile = tempFolder.newFolder("bag11b").toPath();
+        BasicFileAttributes beforeAttrs = Files.readAttributes(payload1, BasicFileAttributes.class);
+        Filler filler = new Filler(bagFile).payload("first.pdf", payload1);
+        // should preserve file time attrs if noTime false
+        Path bagPackage = filler.toPackage("tgz", false);
+        Bag bag = new Loader(bagPackage).load();
+        Path payload = bag.payloadFile("first.pdf");
+        BasicFileAttributes afterAttrs = Files.readAttributes(payload, BasicFileAttributes.class);
+        // zip packages seem to lose millisecond precision in attributes, will agree in seconds
+        assertTrue(beforeAttrs.creationTime().toInstant().truncatedTo(ChronoUnit.SECONDS)
+        .compareTo(afterAttrs.creationTime().toInstant().truncatedTo(ChronoUnit.SECONDS)) == 0);
+        assertTrue(beforeAttrs.lastModifiedTime().toInstant().truncatedTo(ChronoUnit.SECONDS)
+        .compareTo(afterAttrs.lastModifiedTime().toInstant().truncatedTo(ChronoUnit.SECONDS)) == 0);
     }
 
     @Test
