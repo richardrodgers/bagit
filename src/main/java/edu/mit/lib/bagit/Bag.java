@@ -1,6 +1,6 @@
 /**
  * Copyright 2013, 2014 MIT Libraries
- * Licensed under: http://www.apache.org/licenses/LICENSE-2.0
+ * SPDX-Licence-Identifier: Apache-2.0
  */
 
 package edu.mit.lib.bagit;
@@ -20,12 +20,14 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Bag represents a rudimentary bag conformant to LC Bagit spec - version 0.97.
+ * Bag represents a rudimentary bag conformant to IETF Bagit spec: rfc 8493 version 1.0.
  * A Bag is a directory with contents and a little structured metadata in it.
  * Although they don't have to be, these bags are 'wormy' - meaning that they
  * can be written only once (have no update semantics), and can be 'holey' -
@@ -43,13 +45,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Bag {
     // coding constants
-    static final String CS_ALGO = "MD5";
-    static final String BAGIT_VSN = "0.97";
-    static final String LIB_VSN = "0.9";
+    static final String DEFAULT_CS_ALGO = "SHA-512";
+    static final String BAGIT_VSN = "1.0";
+    static final String LIB_VSN = "1.0";
     static final String DFLT_FMT = "zip";
     static final String TGZIP_FMT = "tgz";
     static final String SPACER = "  ";
-    // mandated file and directory names
+    // required file and directory names
     static final String MANIF_FILE = "manifest-";
     static final String TAGMANIF_FILE = "tagmanifest-";
     static final String DECL_FILE = "bagit.txt";
@@ -92,9 +94,6 @@ public class Bag {
     // directory root of bag
     private final Path baseDir;
 
-    // Checksum algorithm used in manifests
-    private final String csAlgorithm;
-
     // Character encoding declared for tag files
     private final Charset tagEncoding;
 
@@ -111,7 +110,6 @@ public class Bag {
     Bag(Path baseDir, boolean sealed) throws IOException {
         this.baseDir = baseDir;
         this.sealed = sealed;
-        this.csAlgorithm = csAlgorithm(baseDir);
         this.tagEncoding = tagEncoding(baseDir);
     }
 
@@ -143,13 +141,13 @@ public class Bag {
     }
 
     /**
-     * Returns the checksum algortihm used in bag manifests.
+     * Returns the checksum algortihms used in bag manifests.
      *
-     * @return algorithm the checksum algorithm
-     * @throws IOException if default algorithm unknown
+     * @return algorithms the set of checksum algorithms
+     * @throws IOException if algorithms unknown
      */
-    public String csAlgorithm() throws IOException {
-        return csAlgorithm;
+    public Set<String> csAlgorithms() throws IOException {
+        return csAlgorithms(baseDir);
     }
 
     /**
@@ -185,16 +183,31 @@ public class Bag {
         if (! Files.exists(bagFile(DECL_FILE))) return -2;
         if (! Charset.isSupported(tagEncoding.name())) return -3;
         if (! Files.isDirectory(bagFile(DATA_DIR))) return -4;
-        // payload files map?
-        Map<String, String> payloads = payloadManifest();
+        // payload files and tag files map?
+        for (String csAlg: csAlgorithms()) {
+            var code = compareManifest(csAlg);
+            if (code != 0)
+                return code;
+            code = compareTag(csAlg);
+            if (code != 0)
+                return code;
+        }
+        return 0;
+    }
+
+    private int compareManifest(String csAlgorithm) throws IOException {
+        Map<String, String> payloads = payloadManifest(csAlgorithm);
         // # payload files and # manifest entries must agree
         if (fileCount(bagFile(DATA_DIR)) != payloads.size()) return -5;
         // files themselves must match also
         for (String path : payloads.keySet()) {
             if (path.startsWith(DATA_DIR) && Files.notExists(bagFile(path))) return -6;
         }
-        // same drill for tag files
-        Map<String, String> tags = tagManifest();
+        return 0;
+    }
+
+    private int compareTag(String csAlgorithm) throws IOException {
+        Map<String, String> tags = tagManifest(csAlgorithm);
         // # tag files and # manifest entries must agree
         // tag files consist of any top-level files except:
         // tagmanifest itself, and the payload directory.
@@ -246,14 +259,23 @@ public class Bag {
         int status = completeStatus();
         if (status != 0) return status;
         // recompute all checksums and compare against manifest values
-        Map<String, String> payloads = payloadManifest();
+        for (String csAlg : csAlgorithms()) {
+            var code = recomputeChecksum(csAlg);
+            if (code != 0)
+                return code;
+        }
+        return 0;
+    }
+
+    private int recomputeChecksum(String csAlgorithm) throws IOException {
+        Map<String, String> payloads = payloadManifest(csAlgorithm);
         for (String relPath : payloads.keySet()) {
             int offset = relPath.startsWith("./") ? 2 : 0;
             String cutPath = relPath.substring(DATA_PATH.length() + offset);
             if (! validateFile(payloadStream(cutPath), payloads.get(relPath), csAlgorithm)) return -9;
         }
         // same for tag files
-        Map<String, String> tags = tagManifest();
+        Map<String, String> tags = tagManifest(csAlgorithm);
         for (String relPath : tags.keySet()) {
             if (! validateFile(tagStream(relPath), tags.get(relPath), csAlgorithm)) return -10;
         }
@@ -421,24 +443,24 @@ public class Bag {
      * Returns the contents of the payload manifest file.
      * Contents are relative paths as keys and checksums as values.
      *
+     * @param csAlgorithm the checksum algorithm of manifest file
      * @return map a map of resource path names to checksums
      * @throws IOException if unable to read manifest
      */
-    public Map<String, String> payloadManifest() throws IOException {
-        String sfx = csAlgoName(csAlgorithm) + ".txt";
-        return manifest(MANIF_FILE + sfx);
+    public Map<String, String> payloadManifest(String csAlgorithm) throws IOException {
+        return manifest(MANIF_FILE + csAlgoName(csAlgorithm) + ".txt");
     }
 
     /**
      * Returns the contents of the tag manifest file.
      * Contents are relative paths as keys and checksums as values.
-     *
+     * 
+     * @param csAlgorithm the checksum algorithm of tag manifest file
      * @return map a map of resource path names to checksums
      * @throws IOException if unable to read tag manifest
      */
-    public Map<String, String> tagManifest() throws IOException {
-        String sfx = csAlgoName(csAlgorithm) + ".txt";
-        return manifest(TAGMANIF_FILE + sfx);
+    public Map<String, String> tagManifest(String csAlgorithm) throws IOException {
+        return manifest(TAGMANIF_FILE + csAlgoName(csAlgorithm) + ".txt");
     }
 
     /**
@@ -529,17 +551,17 @@ public class Bag {
         return refMap;
     }
 
-    static String csAlgorithm(Path base) throws IOException {
-        // determine checksum in use from the manifest file name
+    static Set<String> csAlgorithms(Path base) throws IOException {
+        // determine checksums in use from the manifest file names
+        var csAlgs = new HashSet<String>();
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(base, MANIF_FILE + "*")) {
             for (Path manFile : stream) {
                 // extract algorithm from filename
                 String fileName = manFile.getFileName().toString();
-                return fileName.substring(MANIF_FILE.length(), fileName.lastIndexOf("."));
+                csAlgs.add(csAlgoCode(fileName.substring(MANIF_FILE.length(), fileName.lastIndexOf("."))));
             }
         }
-        // if no any manifest files, return null
-        return null;
+        return csAlgs;
     }
 
     static Charset tagEncoding(Path base) throws IOException {

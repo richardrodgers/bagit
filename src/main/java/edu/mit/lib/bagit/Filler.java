@@ -1,6 +1,6 @@
 /**
  * Copyright 2013, 2014 MIT Libraries
- * Licensed under: http://www.apache.org/licenses/LICENSE-2.0
+ * SPDX-Licence-Identifier: Apache-2.0
  */
 
 package edu.mit.lib.bagit;
@@ -43,9 +43,10 @@ import static edu.mit.lib.bagit.Bag.MetadataName.*;
 import static edu.mit.lib.bagit.Filler.EolRule.*;
 
 /**
- * Filler is a builder class used to construct bags conformant to LC Bagit spec - version 0.97.
- * Filler objects serialize themselves to either a loose directory, a compressed archive file (supported
- * formats zip or tgz) or a stream, abiding by the serialization recommendations of the specification.
+ * Filler is a builder class used to construct bags conformant to IETF Bagit spec - version 1.0.
+ * Filler objects serialize themselves to either a loose directory (degnerate case),
+ * a compressed archive file (supported formats zip or tgz) or a stream of the archive,
+ * abiding by the serialization recommendations of the specification.
  *
  * See README for sample invocations and API description.
  *
@@ -55,30 +56,30 @@ import static edu.mit.lib.bagit.Filler.EolRule.*;
 public class Filler {
 
     // directory root of bag
-    private Path base;
-    // checksum algorithm
-    private String csAlg;
+    private final Path base;
+    // checksum algorithms
+    private final Set<String> csAlgs;
     // Charset encoding for tag files
-    private Charset tagEncoding;
+    private final Charset tagEncoding;
+    // line separator used by FlatWriters
+    private final String lineSeparator;
+    // transient bag?
+    private final boolean transientBag;
+    // manifest writers
+    private final Map<String, FlatWriter> tagWriters = new HashMap<>();
+    private final Map<String, FlatWriter> manWriters = new HashMap<>();
+    // optional flat writers
+    private final Map<String, FlatWriter> writers = new HashMap<>();
+    // optional bag stream
+    private final Map<String, BagOutputStream> streams = new HashMap<>();
     // automatic metadata generation set
-    private Set<MetadataName> autogenNames;
+    private Set<MetadataName> autogenNames = Set.of(BAGGING_DATE, BAG_SIZE, PAYLOAD_OXUM, BAG_SOFTWARE_AGENT);
     // total payload size
     private long payloadSize = 0L;
     // number of payload files
     private int payloadCount = 0;
-    // manifest writers
-    private FlatWriter tagWriter;
-    private FlatWriter manWriter;
-    // optional flat writers
-    private Map<String, FlatWriter> writers;
-    // optional bag streams
-    private Map<String, BagOutputStream> streams;
     // has bag been built?
     private boolean built;
-    // transient bag?
-    private boolean transientBag;
-    // line separator used by FlatWriters
-    private final String lineSeparator;
 
     /**
      * Rule for assigning the EOL (line termination/separation)
@@ -105,94 +106,96 @@ public class Filler {
 
     /**
      * Returns a new Filler (bag builder) instance using
-     * temporary directory to hold bag, default checksum
-     * algorithm (MD5), default tag encoding (UTF-8),
-     * and system-defined line separator
+     * a temporary directory to hold a transient bag with
+     * default tag encoding (UTF-8), system-defined line separator,
+     * and default checksum algorithm (SHA-512)
      *
      * @throws IOException if error creating bag
      */
     public Filler() throws IOException {
-        this(null, null, null, SYSTEM);
+        this(Files.createTempDirectory("bag"), StandardCharsets.UTF_8, SYSTEM, true, DEFAULT_CS_ALGO);
     }
 
     /**
      * Returns a new Filler (bag builder) instance using passed
-     * directory to hold bag, default checksum algorithm (MD5),
-     * default tag encoding (UTF-8), and system-defined line separator
+     * directory to hold a non-transient bag with
+     * default tag encoding (UTF-8), system-defined line separator
+     * and default checksum algorithm (SHA-512)
      *
      * @param base the base directory in which to construct the bag
      * @throws IOException if error creating bag
      */
     public Filler(Path base) throws IOException {
-        this(base, null, null, SYSTEM);
+        this(base, StandardCharsets.UTF_8, SYSTEM, false, DEFAULT_CS_ALGO);
     }
 
     /**
-     * Returns a new filler (bag builder) instances using passed directory
-     * and checksum algorithm, default tag encoding (UTF-8),
-     * and system-defined line separator
+     * Returns a new filler (bag builder) instance using passed
+     * directory to hold a non-transient bag with
+     * default tag encoding (UTF-8), system-defined line separator
+     * and passed list of checksum algorithms (may be one)
      *
-     * @param base directory for bag - if null, create temporary directory
-     * @param csAlgorithm checksum algorithm string - if null use default
+     * @param base the base directory in which to construct the bag
+     * @param csAlgorithms list of checksum algorithms (may be one)
      * @throws IOException if error creating bag
      */
-    public Filler(Path base, String csAlgorithm) throws IOException {
-        this(base, csAlgorithm, null, SYSTEM);
+    public Filler(Path base, String ... csAlgorithms) throws IOException {
+        this(base, StandardCharsets.UTF_8, SYSTEM, false, csAlgorithms);
     }
 
     /**
-     * Returns a new filler (bag builder) instances using passed directory
-     * checksum algorithm, and tag encoding, and system-defined line separator
+     * Returns a new filler (bag builder) instance using passed
+     * directory to hold a non-transient bag with
+     * passed tag encoding, system-defined line separator
+     * and passed list of checksum algorithms (may be one)
      *
-     * @param base directory for bag - if null, create temporary directory
-     * @param csAlgorithm checksum algorithm string - if null use default
-     * @param encoding tag encoding  - if null use default
+     * @param base the base directory in which to construct the bag
+     * @param encoding tag encoding (currently UTF-8, UTF-16)
+     * @param csAlgorithms list of checksum algorithms (may be one)
      * @throws IOException if error creating bag
      */
-    public Filler(Path base, String csAlgorithm, Charset encoding) throws IOException {
-        this(base, csAlgorithm, encoding, SYSTEM);
+    public Filler(Path base, Charset encoding, String ... csAlgorithms) throws IOException {
+        this(base, encoding, SYSTEM, false, csAlgorithms);
     }
 
     /**
      * Returns a new filler (bag builder) instances using passed directory,
-     * checksum algorithm, tag encoding, and line separator for text files.
+     * tag encoding, and line separator for text files, transience rule,
+     * and checksum algorithms
      *
-     * @param base directory for bag - if null, create temporary directory
-     * @param csAlgorithm checksum algorithm string - if null use default
-     * @param encoding character encoding to use for tag files - if null use default
+     * @param base the base directory in which to construct the bag
+     * @param encoding character encoding to use for tag files
      * @param eolRule line termination rule to use for generated text files. Values are:
      *            SYSTEM - use system-defined line termination
      *            COUNTER_SYSTEM - if on Windows, use Unix EOL, else reverse
      *            UNIX - use newline character line termination
      *            WINDOWS - use CR/LF line termination
+     * @param transientBag if true, remove after reading network stream closes
+     * @param csAlgorithms list of checksum algorithms (may be one)
      *
      * @throws IOException if error creating bag
      */
-    public Filler(Path base, String csAlgorithm, Charset encoding, EolRule eolRule) throws IOException {
-        if (base != null) {
-            this.base = base;
-        } else {
-            this.base = Files.createTempDirectory("bag");
-            transientBag = true;
-        }
-        csAlg = (csAlgorithm != null) ? csAlgorithm : CS_ALGO;
-        tagEncoding = (encoding != null) ? encoding : StandardCharsets.UTF_8;
+    public Filler(Path base, Charset encoding, EolRule eolRule, boolean transientBag, String ... csAlgorithms) throws IOException {
+        this.base = base;
+        tagEncoding = encoding;
+        this.transientBag = transientBag;
+        csAlgs = Set.of(csAlgorithms);
         Path dirPath = bagFile(DATA_DIR);
         if (Files.notExists(dirPath)) {
             Files.createDirectories(dirPath);
         }
-        // prepare manifest writers
-        String sfx = csAlgoName(csAlg) + ".txt";
-        tagWriter = new FlatWriter(bagFile(TAGMANIF_FILE + sfx), null, null, false, tagEncoding);
-        manWriter = new FlatWriter(bagFile(MANIF_FILE + sfx), null, tagWriter, true, tagEncoding);
-        writers = new HashMap<>();
-        streams = new HashMap<>();
-        // set up default auto-generated metadata
-        autogenNames = new HashSet<>();
-        autogenNames.add(BAGGING_DATE);
-        autogenNames.add(BAG_SIZE);
-        autogenNames.add(PAYLOAD_OXUM);
-        autogenNames.add(BAG_SOFTWARE_AGENT);
+        // verify these are legit and fail if not
+        if (csAlgs.isEmpty()) {
+            throw new IOException("No checksum algorithm specified");
+        }
+        for (String alg : csAlgs) {
+            try {
+                MessageDigest.getInstance(alg);
+            } catch (NoSuchAlgorithmException nsaE) {
+                throw new IOException("No such checksum algorithm: " + alg);
+            }
+            addWriters(alg);
+        }
         String sysEol = System.lineSeparator();
         switch (eolRule) {
             case SYSTEM: lineSeparator = sysEol; break;
@@ -201,6 +204,13 @@ public class Filler {
             case COUNTER_SYSTEM: lineSeparator = "\n".equals(sysEol) ? "\r\n" : "\n"; break;
             default: lineSeparator = sysEol; break;
         }
+    }
+
+    private void addWriters(String csAlgorithm) throws IOException {
+        var sfx = csAlgoName(csAlgorithm) + ".txt";
+        var tagWriter = new FlatWriter(bagFile(TAGMANIF_FILE + sfx), null, null, false, tagEncoding);
+        tagWriters.put(csAlgorithm, tagWriter);
+        manWriters.put(csAlgorithm, new FlatWriter(bagFile(MANIF_FILE + sfx), null, tagWriters, true, tagEncoding));
     }
 
     private void buildBag() throws IOException {
@@ -218,29 +228,33 @@ public class Filler {
                     metadata(PAYLOAD_OXUM, String.valueOf(payloadSize) + "." + String.valueOf(payloadCount));
                     break;
                 case BAG_SOFTWARE_AGENT:
-                    metadata(BAG_SOFTWARE_AGENT, "MIT BagIt Lib v:" + LIB_VSN);
+                    metadata(BAG_SOFTWARE_AGENT, "BagIt Lib v:" + LIB_VSN);
                     break;
                 default:
                     break;
             }
         }
         // close all optional writers' tag files
-        for (String s : writers.keySet()) {
-            getWriter(s).close();
+        for (FlatWriter fw : writers.values()) {
+            fw.close();
         }
         // close all optional output streams
-        for (String s : streams.keySet()) {
-            getStream(null, s, null, true).close();
+        for (BagOutputStream bout : streams.values()) {
+            bout.close();
         }
-        // close the manifest file
-        manWriter.close();
+        // close the manifest files
+        for (FlatWriter mw : manWriters.values()) {
+            mw.close();
+        }
         // write out bagit declaration file
-        FlatWriter fwriter = new FlatWriter(bagFile(DECL_FILE), null, tagWriter, false, StandardCharsets.UTF_8);
+        FlatWriter fwriter = new FlatWriter(bagFile(DECL_FILE), null, tagWriters, false, StandardCharsets.UTF_8);
         fwriter.writeLine("BagIt-Version: " + BAGIT_VSN);
         fwriter.writeLine("Tag-File-Character-Encoding: " + tagEncoding.name());
         fwriter.close();
-        // close tag manifest file of previous tag files
-        tagWriter.close();
+        // close tag manifest files of previous tag files
+        for (FlatWriter tw : tagWriters.values()) {
+            tw.close();
+        }
         built = true;
     }
 
@@ -289,7 +303,7 @@ public class Filler {
      */
     public Filler payload(String relPath, Path file) throws IOException {
         Path payloadFile = dataFile(relPath);
-        commitPayload(payloadFile, relPath, Files.newInputStream(file));
+        commitPayload(relPath, Files.newInputStream(file));
         // now rewrite payload attrs to original values
         BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
         Files.setAttribute(payloadFile, "creationTime", attrs.creationTime());
@@ -307,33 +321,52 @@ public class Filler {
      * @throws IOException if error reading/writing payload
      */
     public Filler payload(String relPath, InputStream is) throws IOException {
-        commitPayload(dataFile(relPath), relPath, is);
+        commitPayload(relPath, is);
         return this;
     }
 
-    private void commitPayload(Path payloadFile, String relPath, InputStream is) throws IOException {
-      if (Files.exists(payloadFile)) {
-          throw new IllegalStateException("Payload file already exists at: " + relPath);
-      }
-      // wrap stream in digest stream
-      try (DigestInputStream dis =
-          new DigestInputStream(is, MessageDigest.getInstance(csAlgoCode(csAlg)))) {
-          payloadSize += Files.copy(dis, payloadFile);
-          payloadCount++;
-          // record checksum
-          manWriter.writeLine(toHex(dis.getMessageDigest().digest()) + " " + DATA_PATH + relPath);
-      } catch (NoSuchAlgorithmException nsaE) {
-          throw new IOException("no algorithm: " + csAlg);
-      }
+    private void commitPayload(String relPath, InputStream is) throws IOException {
+        Path payloadFile = dataFile(relPath);
+        if (Files.exists(payloadFile)) {
+            throw new IllegalStateException("Payload file already exists at: " + relPath);
+        }
+        payloadSize += digestCopy(is, payloadFile, DATA_PATH + relPath, manWriters);
+        payloadCount++;
+    }
+
+    private long digestCopy(InputStream is, Path destFile, String relPath, Map<String, FlatWriter> fwriters) throws IOException {
+         // wrap stream in digest streams
+         var digests = new HashMap<String, MessageDigest>();
+         var iter = csAlgs.iterator();
+         long copied = 0L;
+         try {
+             InputStream dis = is;
+             while (iter.hasNext()) {
+                 var alg = iter.next();
+                 var dg = MessageDigest.getInstance(csAlgoCode(alg));
+                 digests.put(alg, dg);
+                 dis = new DigestInputStream(dis, dg);
+             }
+             copied = Files.copy(dis, destFile);
+             // record checksums
+             for (String alg : csAlgs) {
+                 fwriters.get(alg).writeLine(toHex(digests.get(alg).digest()) + " " + relPath);
+             }
+         } catch (NoSuchAlgorithmException nsaE) {
+             // should never occur, algorithms checked in constructor
+             throw new IOException("bad algorithm");
+         }
+         return copied;
     }
 
     /**
      * Obtains manifest of bag contents.
      *
+     * @param csAlgorithm the checksum used by manifest
      * @return List manifest list
      */
-    public List<String> getManifest() {
-        return manWriter.getLines();
+    public List<String> getManifest(String csAlgorithm) {
+        return List.copyOf(manWriters.get(csAlgorithm).getLines());
     }
 
     /**
@@ -365,7 +398,7 @@ public class Filler {
         if (Files.exists(dataFile(relPath))) {
             throw new IllegalStateException("Payload file already exists at: " + relPath);
         }
-        return getStream(dataFile(relPath), relPath, manWriter, true);
+        return getStream(dataFile(relPath), relPath, true);
     }
 
     /**
@@ -398,15 +431,7 @@ public class Filler {
         if (Files.exists(bagFile(relPath))) {
             throw new IllegalStateException("Tag file already exists at: " + relPath);
         }
-        // wrap stream in digest stream
-        try (DigestInputStream dis =
-             new DigestInputStream(is, MessageDigest.getInstance(csAlgoCode(csAlg)))) {
-            Files.copy(dis, tagFile(relPath));
-            // record checksum
-            tagWriter.writeLine(toHex(dis.getMessageDigest().digest()) + " " + relPath);
-        } catch (NoSuchAlgorithmException nsaE) {
-            throw new IOException("no algorithm: " + csAlg);
-        }
+        digestCopy(is, tagFile(relPath), relPath, tagWriters);
         return this;
     }
 
@@ -421,7 +446,7 @@ public class Filler {
         if (Files.exists(tagFile(relPath))) {
             throw new IllegalStateException("Tag file already exists at: " + relPath);
         }
-        return getStream(tagFile(relPath), relPath, tagWriter, false);
+        return getStream(tagFile(relPath), relPath, false);
     }
 
     /**
@@ -495,16 +520,18 @@ public class Filler {
     private synchronized FlatWriter getWriter(String name) throws IOException {
         FlatWriter writer = writers.get(name);
         if (writer == null) {
-            writer = new FlatWriter(bagFile(name), null, tagWriter, false, tagEncoding);
+            writer = new FlatWriter(bagFile(name), null, tagWriters, false, tagEncoding);
             writers.put(name, writer);
         }
         return writer;
     }
 
-    private BagOutputStream getStream(Path path, String name, FlatWriter tailWriter, boolean isPayload) throws IOException {
+    private BagOutputStream getStream(Path path, String name, boolean isPayload) throws IOException {
         BagOutputStream stream = streams.get(name);
         if (stream == null) {
-            stream = new BagOutputStream(path, name, tailWriter, isPayload);
+            var relPath = isPayload ? DATA_PATH + name : name;
+            var writers = isPayload ? manWriters : tagWriters;
+            stream = new BagOutputStream(path, relPath, writers);
             streams.put(name, stream);
         }
         return stream;
@@ -517,8 +544,8 @@ public class Filler {
         private final Charset encoding;
         private final AtomicBoolean bomOut = new AtomicBoolean();
 
-        private FlatWriter(Path file, String brPath, FlatWriter tailWriter, boolean record, Charset encoding) throws IOException {
-            super(file, brPath, tailWriter, false);
+        private FlatWriter(Path file, String brPath, Map<String, FlatWriter> tailWriters, boolean record, Charset encoding) throws IOException {
+            super(file, brPath, tailWriters);
             this.record = record;
             this.encoding = encoding;
         }
@@ -552,38 +579,49 @@ public class Filler {
     class BagOutputStream extends OutputStream {
 
         private final String relPath;
-        private final OutputStream out;
-        private final DigestOutputStream dout;
-        private final FlatWriter tailWriter;
-        private final boolean isPayload;
+        private final Map<String, FlatWriter> tailWriters;
+        private OutputStream out;
+        private HashMap<String, MessageDigest> digests;
         private boolean closed = false;
 
-        private BagOutputStream(Path file, String relPath, FlatWriter tailWriter, boolean isPayload) throws IOException {
-            try {
-                out = Files.newOutputStream(file);
-                dout = new DigestOutputStream(out, MessageDigest.getInstance(csAlgoCode(csAlg)));
-                this.relPath = (relPath != null) ? relPath : file.getFileName().toString();
-                this.tailWriter = tailWriter;
-                this.isPayload = isPayload;
-            } catch (NoSuchAlgorithmException nsae) {
-                throw new IOException("no such algorithm: " + csAlg);
+        private BagOutputStream(Path file, String relPath, Map<String, FlatWriter> tailWriters) throws IOException {
+            this.relPath = (relPath != null) ? relPath : file.getFileName().toString();
+            this.tailWriters = tailWriters;
+            out = Files.newOutputStream(file);
+            if (tailWriters != null) {
+                // wrap stream in digest streams
+                digests = new HashMap<String, MessageDigest>();
+                var iter = csAlgs.iterator();
+                try {
+                    while (iter.hasNext()) {
+                        var alg = iter.next();
+                        var dg = MessageDigest.getInstance(csAlgoCode(alg));
+                        digests.put(alg, dg);
+                        out = new DigestOutputStream(out, dg);
+                    }
+                } catch (NoSuchAlgorithmException nsae) {
+                    // should never occur - algorithms checked in constructor
+                    throw new IOException("no such algorithm");
+                }
             }
         }
 
         @Override
         public void write(int b) throws IOException {
-            dout.write(b);
+            out.write(b);
         }
 
         @Override
         public synchronized void close() throws IOException {
             if (! closed) {
-                dout.flush();
-                out.close();
-                if (tailWriter != null) {
-                    String path = isPayload ? DATA_PATH + relPath : relPath;
-                    tailWriter.writeLine(toHex(dout.getMessageDigest().digest()) + " " + path);
+                out.flush();
+                if (tailWriters != null) {
+                    // record checksums
+                    for (String alg : csAlgs) {
+                        tailWriters.get(alg).writeLine(toHex(digests.get(alg).digest()) + " " + relPath);
+                    }
                 }
+                out.close();
                 closed = true;
             }
         }

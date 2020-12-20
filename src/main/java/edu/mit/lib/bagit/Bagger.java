@@ -1,19 +1,16 @@
 /**
  * Copyright 2013, 2014 MIT Libraries
- * Licensed under: http://www.apache.org/licenses/LICENSE-2.0
+ * SPDX-Licence-Identifier: Apache-2.0
  */
 
 package edu.mit.lib.bagit;
 
 import java.io.IOException;
-import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * Bagger is a command-line interface to the BagIt library.
@@ -33,7 +30,7 @@ public class Bagger {
     private final List<String> statements = new ArrayList<>();
     private String archFmt = "directory";
     private boolean noTime = false;
-    private String csAlg = "MD5";
+    private String csAlg = "SHA-512";
     private Charset tagEnc = Charset.defaultCharset();
     private final List<String> optFlags = new ArrayList<>();
     private int verbosityLevel;
@@ -64,7 +61,6 @@ public class Bagger {
         Path bagName = Paths.get(args[1]).toAbsolutePath();
         switch(args[0]) {
             case "fill" : bagger.fill(bagName); break;
-            case "plug" : bagger.plug(bagName); break;
             case "complete" : bagger.complete(bagName); break;
             case "validate" : bagger.validate(bagName); break;
             default: System.out.println("Unknown command: '" + args[0] + "'"); usage();
@@ -76,18 +72,16 @@ public class Bagger {
             "Usage: Bagger command bagName [-options]\n" +
             "Commands:\n" +
             "fill       fill a bag with contents\n" +
-            "plug       plug holes in bag - holes specified by -r (default: all declared)\n" +
             "complete   returns 0 if bag complete, else non-zero\n" +
             "validate   returns 0 if bag valid, else non-zero");
         System.out.println(
             "Options:\n" +
             "-p    [<bag path>=]<payload file>\n" +
-            "-r    <bag path>=<URL> - payload reference\n" +
             "-t    [<bag path>=]<tag file>\n" +
             "-m    <name>=<value> - metadata statement\n" +
             "-a    <archive format> - e.g. 'zip', 'tgz', (default: loose directory)\n" +
             "-n    <noTime> - 'true' or 'false'\n" +
-            "-c    <checksum algorithm> - default: 'MD5'\n" +
+            "-c    <checksum algorithm> - default: 'SHA-512'\n" +
             "-e    <tag file encoding> - default: 'UTF-8'\n" +
             "-o    <optimization flag>\n" +
             "-v    <level> - output level to console (default: 0 = no output)");
@@ -100,7 +94,7 @@ public class Bagger {
     private Bagger() {}
 
     private void fill(Path baseDir) throws IOException {
-        Filler filler = new Filler(baseDir, csAlg, tagEnc);
+        Filler filler = new Filler(baseDir, tagEnc, csAlg);
         if (optFlags.contains("nag")) {
             filler.noAutoGen();
         }
@@ -139,36 +133,8 @@ public class Bagger {
         }
     }
 
-    private void plug(Path bagPath) throws IOException {
-        Loader loader = new Loader(bagPath);
-        Map<String, String> holeMap;
-        if (references.size() > 0) {
-            // only process holes specified
-            holeMap = new HashMap<>();
-            for (String ref : references) {
-                String[] parts = ref.split("=");
-                holeMap.put(parts[0], parts[1]);
-            }
-        } else {
-            // any present
-            holeMap = loader.payloadRefs();
-        }
-        // non-optimized - sequential fetching
-        for (String relPath : holeMap.keySet()) {
-            if (verbosityLevel > 1) {
-                System.out.println("Dereferencing " + holeMap.get(relPath));
-            }
-            loader.resolveRef(relPath, new URL(holeMap.get(relPath)).openStream());
-        }
-        if (verbosityLevel > 0) {
-            System.out.println("Filled " + holeMap.size() + " holes in bag '" + bagPath.getFileName().toString() + "'");
-        }
-        // must load bag to update contents
-        loader.load();
-    }
-
     private void complete(Path bagPath) throws IOException {
-        int status = new Loader(bagPath).load().completeStatus();
+        int status = Loader.load(bagPath).completeStatus();
         boolean complete = status == 0;
         if (verbosityLevel > 0) {
            message(bagPath.getFileName().toString(), complete, "complete");
@@ -177,7 +143,7 @@ public class Bagger {
     }
 
     private void validate(Path bagPath) throws IOException {
-        int status = new Loader(bagPath).load().validationStatus();
+        int status = Loader.load(bagPath).validationStatus();
         boolean valid = status == 0;
         if (verbosityLevel > 0) {
             message(bagPath.getFileName().toString(), valid, "valid");

@@ -1,12 +1,12 @@
 /**
  * Copyright 2013 MIT Libraries
- * Licensed under: http://www.apache.org/licenses/LICENSE-2.0
+ * SPDX-Licence-Identifier: Apache-2.0
  */
 
 /**
  * Package contains a lightweight java library to support creation and consumption of BagIt-packaged content, as specified
- * by the BagIt IETF Draft Spec version 0.97. It represents an 'unconditionally compliant' implementation. It requires a
- * Java 8 or better JRE to run, has a single dependency on the Apache commons compression library
+ * by the IETF BagIt Spec (rfc 8493) version 1.0. It represents an 'unconditionally compliant' implementation. It requires a
+ * Java 11 or better JRE to run, has a single dependency on the Apache commons compression library
  * for support of tarred Gzip archive format (".tgz"), and is Apache 2 licensed. The library attempts to simplify a few
  * of the most common use cases/patterns involving bag packages. The first (the 'producer' pattern) is where content
  * is assembled and placed into a bag, and the bag is then serialized for transport/hand-off to another component or system.

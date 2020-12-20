@@ -17,7 +17,7 @@ sourceCompatibility = 11
 
 group = 'edu.mit.lib'
 archivesBaseName = 'bagit'
-version = '0.9'
+version = '1.0'
 description = 'Compact Java BagIt library'
 
 ext {
