@@ -1,31 +1,15 @@
 /**
  * Copyright 2013, 2014 MIT Libraries
- * Licensed under: http://www.apache.org/licenses/LICENSE-2.0
+ * SPDX-Licence-Identifier: Apache-2.0
  */
 
 package edu.mit.lib.bagit;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.charset.Charset;
 import java.nio.file.Files;
-import java.nio.file.OpenOption;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.FileTime;
-import java.security.DigestInputStream;
-import java.security.DigestOutputStream;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.Scanner;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -35,283 +19,110 @@ import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 
 import static edu.mit.lib.bagit.Bag.*;
 /**
- * Loader is a Bag builder class that interprets bag serializations and other
- * manfestations as Bags. It also exposes methods allowing clients to fill
- * bag 'holes' (fetch.txt contents), and updates the bag to reflect this.
+ * Loader is a class with static methods to interpret archive files and other
+ * forms as representations or serializations of Bags. 
  *
  * See README for sample invocations and API description.
  *
  * @author richardrodgers
  */
 public class Loader {
-    // base directory of bag
-    private Path base;
-    // checksum algorithm used in bag
-    private String csAlg;
-    // map of unresolved fetch.txt files
-    private final ConcurrentMap<String, String> payloadRefMap = new ConcurrentHashMap<>();
-    // manifest writer
-    private LoaderWriter manWriter;
-    // line separator discovered in Bag text file
-    private String lineSeparator = System.lineSeparator();
-
-   /**
-     * Returns a new Loader (bag loader) instance using passed
-     * file (loose directory or archive file)
+ 
+    /**
+     * Returns a Bag instance from passed file
+     * (loose directory or archive file)
      *
      * @param file the base directory or archive file from which to extract the bag
+     * @return bag the bag in the directory or archive
      * @throws IOException if error loading bag
      */
-    public Loader(Path file) throws IOException {
+    public static Bag load(Path file) throws IOException {
+        return loadFile(file, false);
+    }
+
+    /**
+     * Returns a Bag instance using passed I/O stream
+     * and format with bag in a temporary directory location
+     *
+     * @param in the input stream containing the serialized bag
+     * @param format the expected serialization format
+     * @return bag the bag in the temporary directory
+     * @throws IOException if error loading stream
+     */
+    public static Bag load(InputStream in, String format) throws IOException {
+        return loadStream(null, in, format, false);
+    }
+
+    /**
+     * Returns a Bag instance using passed I/O stream
+     * and format with bag in the passed directory location
+     *
+     * @param parent the parent directory into which to extract the bag directory
+     * @param in the input stream containing the serialized bag
+     * @param format the expected serialization format
+     * @return bag the bag in the temporary directory
+     * @throws IOException if error loading stream
+     */
+    public static Bag load(Path parent, InputStream in, String format) throws IOException {
+        return loadStream(parent, in, format, false);
+    }
+
+    /**
+     * Returns a sealed Bag instance from passed file
+     * (loose directory or archive file)
+     *
+     * @param file the base directory or archive file from which to extract the bag
+     * @return bag the bag in the directory or archive
+     * @throws IOException if error loading bag
+     */
+    public static Bag seal(Path file) throws IOException {
+        return loadFile(file, true);
+    }
+
+     /**
+     * Returns a sealed Bag instance using passed I/O stream
+     * and format with bag in a temporary directory location
+     *
+     * @param in the input stream containing the serialized bag
+     * @param format the expected serialization format
+     * @return bag the bag in the temporary directory
+     * @throws IOException if error loading stream
+     */
+    public static Bag seal(InputStream in, String format) throws IOException {
+        return loadStream(null, in, format, true);
+    }
+
+    private static Bag loadFile(Path file, boolean sealed) throws IOException {
         if (file == null || Files.notExists(file)) {
             throw new IOException("Missing or nonexistent bag file");
         }
         // is it an archive file? If so,inflate into bag
+        Path base = null;
         String baseName = file.getFileName().toString();
         int sfxIdx = baseName.lastIndexOf(".");
         String suffix = (sfxIdx != -1) ? baseName.substring(sfxIdx + 1) : null;
         if (! Files.isDirectory(file) && suffix != null &&
             (suffix.equals(DFLT_FMT) || suffix.equals(TGZIP_FMT))) {
             String dirName = baseName.substring(0, sfxIdx);
-            base = file.getParent().resolve(dirName);
-            Files.createDirectories(base.resolve(DATA_DIR));
-            inflate(file.getParent(), Files.newInputStream(file), suffix);
-            // remove archive original
-            Files.delete(file);
-        } else {
-            base = file;
-        }
+             base = file.getParent().resolve(dirName);
+             Files.createDirectories(base.resolve(DATA_DIR));
+             inflate(file.getParent(), Files.newInputStream(file), suffix);
+             // remove archive original
+             Files.delete(file);
+         } else {
+             base = file;
+         }
+        return new Bag(base, sealed);
     }
 
-    /**
-     * Returns a new Loader (bag loader) instance using passed I/O stream
-     * and format with bag in a temporary directory location
-     *
-     * @param in the input stream containing the serialized bag
-     * @param format the expected serialization format
-     * @throws IOException if error loading stream
-     */
-    public Loader(InputStream in, String format) throws IOException {
-        this(null, in, format);
-    }
-
-     /**
-     * Returns a new Loader (bag loader) instance using passed I/O stream
-     * and format with bag in the passed directory location
-     *
-     * @param parent the parent directory into which to extract the bag directory
-     * @param in the input stream containing the serialized bag
-     * @param format the expected serialization format
-     * @throws IOException if error loading stream
-     */
-    public Loader(Path parent, InputStream in, String format) throws IOException {
+    private static Bag loadStream(Path parent, InputStream in, String format, boolean sealed) throws IOException {
         Path theParent = (parent != null) ? parent : Files.createTempDirectory("bagparent");
-        inflate(theParent, in, format);
-    }
-
-    /**
-     * Returns the checksum algorithm used in bag manifests.
-     *
-     * @return algorithm the checksum algorithm
-     * @throws IOException if error loading bag
-     */
-    public String csAlgorithm() throws IOException {
-        if (csAlg == null) {
-            csAlg = Bag.csAlgorithm(base);
-        }
-        return csAlg;
-    }
-
-    /**
-     * Returns sealed Bag from Loader. Sealed Bags cannot be serialized.
-     *
-     * @return bag the loaded sealed Bag instance
-     * @throws IOException if error loading bag
-     */
-    public Bag seal() throws IOException {
-        finish();
-        return new Bag(this.base, true);
-    }
-
-    /**
-     * Returns Bag from Loader
-     *
-     * @return bag the loaded Bag instance
-     * @throws IOException if error loading bag
-     */
-    public Bag load() throws IOException {
-        finish();
-        return new Bag(this.base, false);
-    }
-
-    private void finish() throws IOException {
-        // if manWriter is non-null, some payload files were fetched.
-        if (manWriter != null) {
-            manWriter.close();
-            Charset encoding = tagEncoding(base);
-            AtomicBoolean bomOut = new AtomicBoolean();
-            // Update fetch.txt - remove if all holes plugged, else filter
-            Path refFile = bagFile(REF_FILE);
-            if (payloadRefMap.size() > 0) {
-                // now reconstruct fetch.txt filtering out those resolved
-                try (OutputStream refOut = Files.newOutputStream(refFile)) {
-                    for (String refline : bufferFile(refFile, encoding)) {
-                        String[] parts = refline.split("\\s+");
-                        if (payloadRefMap.containsKey(parts[2].trim())) {
-                            refOut.write(filterBytes(refline, encoding, bomOut));
-                        }
-                    }
-                }
-            }
-            // update tagmanifest with new manifest checksum, fetch stuff
-            String sfx = csAlgoName(csAlgorithm()) + ".txt";
-            Path tagManFile = bagFile(TAGMANIF_FILE + sfx);
-            // now recompute manifest checksum
-            String manCS = checksum(bagFile(MANIF_FILE + sfx), csAlgorithm());
-            // likewise fetch.txt if it's still around
-            String fetchCS = Files.exists(refFile) ? checksum(bagFile(MANIF_FILE + sfx), csAlgorithm()) : null;
-            // recreate tagmanifest with new checksums
-            bomOut.set(false);
-            try (OutputStream tagManOut = Files.newOutputStream(tagManFile)) {
-                for (String tline : bufferFile(tagManFile, encoding)) {
-                    String[] parts = tline.split("\\s+");
-                    if (parts[1].startsWith(MANIF_FILE)) {
-                        tagManOut.write(filterBytes(manCS + " " + MANIF_FILE + sfx + lineSeparator, encoding, bomOut));
-                    } else if (parts[1].startsWith(REF_FILE)) {
-                        if (fetchCS != null) {
-                            tagManOut.write(filterBytes(fetchCS + " " + REF_FILE + sfx + lineSeparator, encoding, bomOut));
-                        }
-                    } else {
-                        tagManOut.write(filterBytes(tline, encoding,bomOut));
-                    }
-                }
-            }
-        }
-    }
-
-    private List<String> bufferFile(Path file, Charset encoding) throws IOException {
-        List<String> lines = new ArrayList<>();
-        try (BufferedReader reader = Files.newBufferedReader(file, encoding)) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                lines.add(line + lineSeparator);
-            }
-        }
-        Files.delete(file);
-        return lines;
-    }
-
-    /**
-     * Returns a map of payload files to fetch URLs (ie contents of fetch.txt).
-     *
-     * @return refMap the map of payload files to fetch URLs
-     * @throws IOException if error loading bag
-     */
-    public Map<String, String> payloadRefs() throws IOException {
-        Path refFile = bagFile(REF_FILE);
-        if (payloadRefMap.isEmpty() && Files.exists(refFile)) {
-            // load initial data
-            payloadRefMap.putAll(Bag.payloadRefs(refFile, tagEncoding(base)));
-        }
-        return payloadRefMap;
-    }
-
-    /**
-     * Resolves a payload reference with passed stream content.
-     *
-     * @param relPath the bag-relative path to the payload file
-     * @param is the content input stream for payload
-     * @throws IOException if error reading from input stream
-     */
-    public void resolveRef(String relPath, InputStream is) throws IOException {
-        // various checks - is ref known?
-        if (! payloadRefMap.containsKey(relPath)) {
-            throw new IOException ("Unknown payload reference: " + relPath);
-        }
-        if (Files.exists(bagFile(relPath))) {
-            throw new IllegalStateException("Payload file already exists at: " + relPath);
-        }
-        // wrap stream in digest stream
-        try (DigestInputStream dis = new DigestInputStream(is, MessageDigest.getInstance(csAlgoCode(csAlg)))) {
-            Files.copy(dis, bagFile(relPath));
-            // record checksum
-            manifestWriter().writeLine(toHex(dis.getMessageDigest().digest()) + " " + relPath);
-            // remove from map
-            payloadRefMap.remove(relPath);
-        } catch (NoSuchAlgorithmException nsaE) {
-            throw new IOException("no algorithm: " + csAlg);
-        }
-    }
-
-    private Path bagFile(String name) {
-        return base.resolve(name);
-    }
-
-    // lazy initialization of manifest writer
-    private synchronized LoaderWriter manifestWriter() throws IOException {
-        if (manWriter == null) {
-            Path manif = bagFile(MANIF_FILE + csAlgoName(csAlgorithm()) + ".txt");
-            // set line separator for writer to match existing file encoding
-            try (Scanner sc = new Scanner(manif)) {
-                lineSeparator = (sc.findWithinHorizon("\r\n", 500) != null) ? "\r\n" : "\n";
-            }
-            manWriter = new LoaderWriter(manif, tagEncoding(base));
-        }
-        return manWriter;
-    }
-
-    class LoaderWriter extends LoaderOutputStream {
-
-        private final Charset encoding;
-        private final AtomicBoolean bomOut = new AtomicBoolean();
-
-        private LoaderWriter(Path file, Charset encoding) throws IOException {
-            super(file);
-            this.encoding = encoding;
-        }
-
-        public void writeLine(String line) throws IOException {
-            write(filterBytes(line + lineSeparator, encoding, bomOut));
-        }
-    }
-
-    // wraps output stream in digester, and records results with tail writer
-    class LoaderOutputStream extends OutputStream {
-
-        private final String relPath;
-        private final OutputStream out;
-        private final DigestOutputStream dout;
-        private final LoaderWriter tailWriter;
-
-        private LoaderOutputStream(Path file) throws IOException {
-            OpenOption opt = StandardOpenOption.APPEND;
-            try {
-                out = Files.newOutputStream(file, opt);
-                dout = new DigestOutputStream(out, MessageDigest.getInstance(csAlgoCode(csAlg)));
-                this.relPath = file.getFileName().toString();
-                this.tailWriter = null;
-            } catch (NoSuchAlgorithmException nsae) {
-                throw new IOException("no such algorithm: " + csAlg);
-            }
-        }
-
-        @Override
-        public void write(int b) throws IOException {
-            dout.write(b);
-        }
-
-        @Override
-        public void close() throws IOException {
-            dout.flush();
-            out.close();
-            if (tailWriter != null) {
-                tailWriter.writeLine(toHex(dout.getMessageDigest().digest()) + " " + relPath);
-            }
-        }
+        return new Bag(inflate(theParent, in, format), sealed);
     }
 
     // inflate compressesd archive in base directory
-    private void inflate(Path parent, InputStream in, String fmt) throws IOException {
+    private static Path inflate(Path parent, InputStream in, String fmt) throws IOException {
+        Path base = null;
         switch (fmt) {
             case "zip" :
                 try (ZipInputStream zin = new ZipInputStream(in)) {
@@ -347,8 +158,10 @@ public class Loader {
             default:
                 throw new IOException("Unsupported archive format: " + fmt);
         }
+        return base;
     }
 
+    /*
     private String checksum(Path file, String csAlg) throws IOException {
         byte[] buf = new byte[2048];
         int num = 0;
@@ -363,4 +176,5 @@ public class Loader {
             throw new IOException("no algorithm: " + csAlg);
         }
     }
+    */
 }

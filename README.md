@@ -1,11 +1,10 @@
 # Java BagIt Library #
 
 This project contains a lightweight java library to support creation and consumption of BagIt-packaged content, as specified
-by the BagIt IETF Draft Spec version 0.97. It requires a Java 8 or better JRE to run, has a single dependency on the Apache
-commons compression library for support of tarred Gzip archive format (".tgz"), and is Apache 2 licensed. Build with Gradle or Maven.
+by the BagIt Spec (IETF RFC 8493 version 1.0). It requires a Java 11 or better JRE to run, has a single dependency on the Apache
+commons compression library for support of tarred Gzip archive format (".tgz"), and is Apache 2 licensed. Build with Gradle.
 
 [![Build Status](https://travis-ci.org/richardrodgers/bagit.svg?branch=master)](https://travis-ci.org/richardrodgers/bagit)
-[![Dependency Status](https://dependencyci.com/github/richardrodgers/bagit/badge)](https://dependencyci.com/github/richardrodgers/bagit)
 
 ## Use Cases ##
 
@@ -71,24 +70,25 @@ In this case we need to indicate where we want to put the bag when we construct 
 
 The reverse situation occurs when we wish to read or consume a bag. Here we are given a specific representation of
 a purported bag, (viz. archive, I/O stream), and need to interpret it (and possibly validate it). The companion object
-in this case is the 'Loader', which is used to produce Bag instances. Thus:
+in this case is the 'Loader', which is used to produce Bag instances from package serializations (including the _null_ 
+serialization of a filesystem directory). Thus:
 
-    Bag bag = new Loader(myZipFile).load();
+    Bag bag = Loader.load((myZipFile);
     Path myBagFile = bag.payloadFile("firstSet/firstFile");
 
 Or the bag contents may be obtained from a network stream:
 
-    String bagId = new Loader(inputStream, "zip").load().metadata("External-Identifier");
+    String bagId = Loader.load(inputStream, "zip").metadata("External-Identifier");
 
 If we wish to prevent manipulation of the hydrated bag (see below), we can seal it:
 
-    Bag bag = new Loader(secureZipFile).seal();
+    Bag bag = Loader.seal(secureZipFile);
 
 For all the API details consult the [Javadoc](http://richardrodgers.github.io/bagit/javadoc/index.html)
 
 ## Portability ##
 
-Bags are intended to be portable data containers, in that one should be able to write them on one operating system,
+Bags are intended to be portable data containers, in the sense that one should be able to write them on one operating system,
 and read them on another. The spec contemplates this in specific ways, e.g. by allowing text files such as
 'bag-info.txt' legally to have _either_ Unix-style line termination, or Windows-style. Tools operating on bags ought
 to expect and tolerate this diversity, but do not always. The library provides some assistance here by allowing the user
@@ -100,8 +100,8 @@ See the [Javadoc](http://richardrodgers.github.io/bagit/javadoc/index.html) for 
 
 ## Archive formats ##
 
-Bags are commonly serialized to standard archive formats such as ZIP. The library supports two archive formats:
-'zip' and 'tgz' and a variant in each of these. If the variant is used, the library suppresses the file
+Bags are commonly serialized to standard archive formats such as ZIP. The library supports two compressed archive formats:
+'zip' and 'tgz' (GZip'ed tar) and a variant in each of these. If the variant is used, the library suppresses the file
 creation/modification time attributes, in order that checksums of archives produced at different times
 may accurately reflect only bag contents. That is, the checksum of a zipped bag (with no timestamp variant) is
 time-of-archiving and filesystem-time-invariant, but content-sensitive. The variant is requested with an API call.
@@ -129,8 +129,8 @@ Sample invocation:
 
     java -cp <classpath> edu.mit.lib.bagit.Bagger fill newbag -p payloadFile -m Metadata-Name='metadata value'
 
-The Bagger command-line tool can be conveniently run from a so-called _fat_ jar that is a build option.
-Fat jars include all dependencies in a single executable jar (no classpath declaration required):
+The Bagger command-line tool can be conveniently run from a so-called _uber_ jar that is a build option.
+Uber jars include all dependencies in a single executable jar (no classpath declaration required):
 
     java -jar bagit-all-x.y.jar validate mybag
 
@@ -139,14 +139,14 @@ Fat jars include all dependencies in a single executable jar (no classpath decla
 The distribution jars are kept at [Bintray](https://bintray.com), so make sure that repository is declared.
 Then (NB: using the most current version), for Gradle:
 
-    compile 'edu.mit.lib:bagit:0.9'
+    implementation 'edu.mit.lib:bagit:1.0'
 
 or Maven:
 
     <dependency>
       <groupId>edu.mit.lib</groupId>
       <artifactId>bagit</artifactId>
-      <version>0.9</version>
+      <version>1.0</version>
     </dependency>
 
 in a standard pom.xml dependencies block.

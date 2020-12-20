@@ -1,6 +1,6 @@
 /**
  * Copyright 2013, 2014 MIT Libraries
- * Licensed under: http://www.apache.org/licenses/LICENSE-2.0
+ * SPDX-Licence-Identifier: Apache-2.0
  */
 package edu.mit.lib.bagit;
 
@@ -16,6 +16,7 @@ import java.util.Scanner;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+
 import static java.nio.file.StandardCopyOption.*;
 
 import org.junit.Before;
@@ -29,6 +30,7 @@ import static org.junit.Assert.*;
 
 import static edu.mit.lib.bagit.Bag.*;
 import static edu.mit.lib.bagit.Bag.MetadataName.*;
+import static edu.mit.lib.bagit.Loader.*;
 
 /*
  * Basic unit tests for BagIt Library. Incomplete.
@@ -60,10 +62,33 @@ public class BagTest {
          Files.copy(payload1, tag2, REPLACE_EXISTING);
     }
 
+    // tests for various checksum related functions
+
+    @Test
+    public void basicBagPartsPresentDefaultChecksum() throws IOException, IllegalAccessException {
+        Path bagFile = tempFolder.newFolder("cs-bag1").toPath();
+        new Filler(bagFile).payload(payload1).toDirectory();
+        Path decl = bagFile.resolve(DECL_FILE);
+        assertTrue(Files.exists(decl));
+        // should default to SHA-512
+        Path manifest = bagFile.resolve("manifest-sha512.txt");
+        assertTrue(Files.exists(manifest));
+        Path tagmanifest = bagFile.resolve("tagmanifest-sha512.txt");
+        assertTrue(Files.exists(tagmanifest));
+        Path payloadDir = bagFile.resolve(DATA_DIR);
+        assertTrue(Files.isDirectory(payloadDir));
+        Path payloadFile = payloadDir.resolve(payload1.getFileName().toString());
+        assertTrue(Files.exists(payloadFile));
+        // assure completeness
+        Bag bag = load(bagFile);
+        assertTrue(bag.isComplete());
+        assertTrue(bag.isValid());
+    }
+
     @Test
     public void basicBagPartsPresentMD5() throws IOException, IllegalAccessException {
-        Path bagFile = tempFolder.newFolder("bag1").toPath();
-        new Filler(bagFile).payload(payload1).toDirectory();
+        Path bagFile = tempFolder.newFolder("cs-bag2").toPath();
+        new Filler(bagFile, "MD5").payload(payload1).toDirectory();
         Path decl = bagFile.resolve(DECL_FILE);
         assertTrue(Files.exists(decl));
         Path manifest = bagFile.resolve("manifest-md5.txt");
@@ -75,15 +100,15 @@ public class BagTest {
         Path payloadFile = payloadDir.resolve(payload1.getFileName().toString());
         assertTrue(Files.exists(payloadFile));
         // assure completeness
-        Bag bag = new Loader(bagFile).load();
+        Bag bag = load(bagFile);
         assertTrue(bag.isComplete());
         assertTrue(bag.isValid());
     }
 
     @Test
     public void basicBagPartsPresentSHA1() throws IOException, IllegalAccessException {
-        Path bagFile = tempFolder.newFolder("bag2").toPath();
-        new Filler(bagFile, "SHA1").payload(payload1).toDirectory();
+        Path bagFile = tempFolder.newFolder("cs-bag3").toPath();
+        new Filler(bagFile, "SHA-1").payload(payload1).toDirectory();
         Path decl = bagFile.resolve(DECL_FILE);
         assertTrue(Files.exists(decl));
         Path manifest = bagFile.resolve("manifest-sha1.txt");
@@ -95,7 +120,70 @@ public class BagTest {
         Path payloadFile = payloadDir.resolve(payload1.getFileName().toString());
         assertTrue(Files.exists(payloadFile));
         // assure completeness
-        Bag bag = new Loader(bagFile).load();
+        Bag bag = load(bagFile);
+        assertTrue(bag.isComplete());
+        assertTrue(bag.isValid());
+    }
+
+    @Test
+    public void basicBagPartsPresentSHA256() throws IOException, IllegalAccessException {
+        Path bagFile = tempFolder.newFolder("cs-bag4").toPath();
+        new Filler(bagFile, "SHA-256").payload(payload1).toDirectory();
+        Path decl = bagFile.resolve(DECL_FILE);
+        assertTrue(Files.exists(decl));
+        Path manifest = bagFile.resolve("manifest-sha256.txt");
+        assertTrue(Files.exists(manifest));
+        Path tagmanifest = bagFile.resolve("tagmanifest-sha256.txt");
+        assertTrue(Files.exists(tagmanifest));
+        Path payloadDir = bagFile.resolve(DATA_DIR);
+        assertTrue(Files.isDirectory(payloadDir));
+        Path payloadFile = payloadDir.resolve(payload1.getFileName().toString());
+        assertTrue(Files.exists(payloadFile));
+        // assure completeness
+        Bag bag = load(bagFile);
+        assertTrue(bag.isComplete());
+        assertTrue(bag.isValid());
+    }
+
+    @Test(expected = IOException.class)
+    public void unknownChecksumAlgorithm() throws IOException, IllegalAccessException {
+        Path bagFile = tempFolder.newFolder("cs-bag5").toPath();
+        new Filler(bagFile, "SHA-6666").payload(payload1).toDirectory();
+        Path decl = bagFile.resolve(DECL_FILE);
+        assertTrue(Files.exists(decl));
+        Path manifest = bagFile.resolve("manifest-sha6666.txt");
+        assertTrue(Files.exists(manifest));
+        Path tagmanifest = bagFile.resolve("tagmanifest-sha6666.txt");
+        assertTrue(Files.exists(tagmanifest));
+        Path payloadDir = bagFile.resolve(DATA_DIR);
+        assertTrue(Files.isDirectory(payloadDir));
+        Path payloadFile = payloadDir.resolve(payload1.getFileName().toString());
+        assertTrue(Files.exists(payloadFile));
+        // assure completeness
+        Bag bag = load(bagFile);
+        assertTrue(bag.isComplete());
+        assertTrue(bag.isValid());
+    }
+    @Test
+    public void basicBagPartsPresentMultiChecksum() throws IOException, IllegalAccessException {
+        Path bagFile = tempFolder.newFolder("cs-bag6").toPath();
+        new Filler(bagFile, "SHA-256", "SHA-512").payload(payload1).toDirectory();
+        Path decl = bagFile.resolve(DECL_FILE);
+        assertTrue(Files.exists(decl));
+        Path manifest1 = bagFile.resolve("manifest-sha256.txt");
+        assertTrue(Files.exists(manifest1));
+        Path manifest2 = bagFile.resolve("manifest-sha512.txt");
+        assertTrue(Files.exists(manifest2));
+        Path tagmanifest1 = bagFile.resolve("tagmanifest-sha256.txt");
+        assertTrue(Files.exists(tagmanifest1));
+        Path tagmanifest2 = bagFile.resolve("tagmanifest-sha512.txt");
+        assertTrue(Files.exists(tagmanifest2));
+        Path payloadDir = bagFile.resolve(DATA_DIR);
+        assertTrue(Files.isDirectory(payloadDir));
+        Path payloadFile = payloadDir.resolve(payload1.getFileName().toString());
+        assertTrue(Files.exists(payloadFile));
+        // assure completeness
+        Bag bag = load(bagFile);
         assertTrue(bag.isComplete());
         assertTrue(bag.isValid());
     }
@@ -111,7 +199,7 @@ public class BagTest {
         Path pload2 = payloadDir.resolve("second/second.pdf");
         assertTrue(Files.exists(pload2));
          // assure completeness
-        Bag bag = new Loader(bagFile).load();
+        Bag bag = load(bagFile);
         assertTrue(bag.isComplete());
         assertTrue(bag.isValid());
     }
@@ -127,7 +215,7 @@ public class BagTest {
         Path ttag2 = tagDir.resolve("second.pdf");
         assertTrue(Files.exists(ttag2));
          // assure completeness
-        Bag bag = new Loader(bagFile).load();
+        Bag bag = load(bagFile);
         assertTrue(bag.isComplete());
         assertTrue(bag.isValid());
     }
@@ -140,7 +228,7 @@ public class BagTest {
         String val2 = "JUnit4 Test Harness";
         filler.metadata("Metadata-test", val1);
         filler.metadata(SOURCE_ORG, val2);
-        Bag bag = new Loader(filler.toDirectory()).load();
+        Bag bag = load(filler.toDirectory());
         Path payloadDir = bagFile.resolve(DATA_DIR);
         assertTrue(Files.isDirectory(payloadDir));
         Path payload1 = payloadDir.resolve("first.pdf");
@@ -157,7 +245,7 @@ public class BagTest {
         String val2 = "JUnit4 Test Harness";
         filler.metadata("Metadata-test", val1);
         filler.metadata(SOURCE_ORG, val2);
-        Bag bag = new Loader(filler.toDirectory()).load();
+        Bag bag = load(filler.toDirectory());
         Path payloadDir = bagFile.resolve("data");
         assertTrue(Files.isDirectory(payloadDir));
         Path payload1 = payloadDir.resolve("first.pdf");
@@ -169,7 +257,7 @@ public class BagTest {
         Path bagFile2 = tempFolder.newFolder("bag7").toPath();
         Filler filler2 = new Filler(bagFile2).payload("first.pdf", payload1);
         filler2.noAutoGen().metadata(SOURCE_ORG, val2);
-        Bag bag2 = new Loader(filler2.toDirectory()).load();
+        Bag bag2 =  load(filler2.toDirectory());
         assertNull(bag2.metadata(BAGGING_DATE));
         assertNull(bag2.metadata(BAG_SIZE));
         assertNull(bag2.metadata(PAYLOAD_OXUM));
@@ -179,7 +267,7 @@ public class BagTest {
         names.add(BAG_SIZE);
         names.add(PAYLOAD_OXUM);
         filler3.autoGen(names);
-        Bag bag3 = new Loader(filler3.toDirectory()).load();
+        Bag bag3 = load(filler3.toDirectory());
         assertNull(bag3.metadata(BAGGING_DATE));
         assertNotNull(bag3.metadata(BAG_SIZE));
         assertNotNull(bag3.metadata(PAYLOAD_OXUM));
@@ -189,7 +277,7 @@ public class BagTest {
     public void completeAndIncompleteBag() throws IOException {
         Path bagFile = tempFolder.newFolder("bag8").toPath();
         Filler filler = new Filler(bagFile).payload("first.pdf", payload1).payload("second.pdf", payload2);
-        Bag bag = new Loader(filler.toDirectory()).load();
+        Bag bag = load(filler.toDirectory());
         assertTrue(bag.isComplete());
         // now remove a payload file
         Path toDel = bagFile.resolve("data/first.pdf");
@@ -201,7 +289,7 @@ public class BagTest {
     public void validAndInvalidBag() throws IOException {
         Path bagFile = tempFolder.newFolder("bag9").toPath();
         Filler filler = new Filler(bagFile).payload("first.pdf", payload1);
-        Bag bag = new Loader(filler.toDirectory()).load();
+        Bag bag = load(filler.toDirectory());
         assertTrue(bag.isValid());
         // now remove a payload file
         Path toDel = bagFile.resolve("data/first.pdf");
@@ -214,7 +302,7 @@ public class BagTest {
         Path bagFile = tempFolder.newFolder("bag10").toPath();
         Filler filler = new Filler(bagFile).payload("first.pdf", payload1);
         Path bagPackage = filler.toPackage();
-        Bag bag = new Loader(bagPackage).load();
+        Bag bag = load(bagPackage);
         Path payload = bag.payloadFile("first.pdf");
         assertTrue(Files.size(payload1) == Files.size(payload));
     }
@@ -226,7 +314,7 @@ public class BagTest {
         Filler filler = new Filler(bagFile).payload("first.pdf", payload1);
         // should preserve file time attrs if noTime false
         Path bagPackage = filler.toPackage("zip", false);
-        Bag bag = new Loader(bagPackage).load();
+        Bag bag = load(bagPackage);
         Path payload = bag.payloadFile("first.pdf");
         BasicFileAttributes afterAttrs = Files.readAttributes(payload, BasicFileAttributes.class);
         // zip packages seem to lose millisecond precision in attributes, will agree in seconds
@@ -243,7 +331,7 @@ public class BagTest {
         Filler filler = new Filler(bagFile).payload("first.pdf", payload1);
         // should preserve file time attrs if noTime false
         Path bagPackage = filler.toPackage("tgz", false);
-        Bag bag = new Loader(bagPackage).load();
+        Bag bag = load(bagPackage);
         Path payload = bag.payloadFile("first.pdf");
         BasicFileAttributes afterAttrs = Files.readAttributes(payload, BasicFileAttributes.class);
         // zip packages seem to lose millisecond precision in attributes, will agree in seconds
@@ -260,7 +348,7 @@ public class BagTest {
         Filler filler = new Filler(bagFile).payload("first.pdf", payload1);
         // should strip file time attrs if noTime true
         Path bagPackage = filler.toPackage("zip", true);
-        Bag bag = new Loader(bagPackage).load();
+        Bag bag = load(bagPackage);
         Path payload = bag.payloadFile("first.pdf");
         BasicFileAttributes afterAttrs = Files.readAttributes(payload, BasicFileAttributes.class);
         assertTrue(beforeAttrs.creationTime().compareTo(afterAttrs.creationTime()) != 0);
@@ -272,7 +360,7 @@ public class BagTest {
         Path bagFile = tempFolder.newFolder("bag13").toPath();
         Filler filler = new Filler(bagFile).payload("first.pdf", payload1);
         Path bagPackage = filler.toPackage();
-        Bag bag = new Loader(bagPackage).seal();
+        Bag bag = seal(bagPackage);
         // stream access OK
         assertNotNull(bag.payloadStream("first.pdf"));
         // will throw IllegalAccessException
@@ -292,7 +380,7 @@ public class BagTest {
         Path ttag1 = bagFile.resolve("firstTag.txt");
         assertTrue(Files.exists(ttag1));
         // assure completeness
-        Bag bag = new Loader(bagFile).load();
+        Bag bag = load(bagFile);
         assertTrue(bag.isComplete());
         assertTrue(bag.isValid());
     }
@@ -319,7 +407,7 @@ public class BagTest {
         assertTrue(Files.exists(pload1));
         assertTrue(Files.size(pload1) == Files.size(dupFile));
          // assure completeness
-        Bag bag = new Loader(bagFile).load();
+        Bag bag = load(bagFile);
         try {
             Path pload2 = bag.payloadFile("first.pdf");
             assertTrue(Files.size(pload2) == Files.size(dupFile));
@@ -344,11 +432,11 @@ public class BagTest {
         dupIn.close();
         dupOut.close();
         Path bagDir = filler.toDirectory();
-        Bag fullBag = new Loader(bagDir).load();
+        Bag fullBag = load(bagDir);
         try {
             assertTrue(Files.size(fullBag.payloadFile("first.pdf")) == Files.size(fullBag.payloadFile("second.pdf")));
         } catch (Exception e) {}
-        Map<String, String> manif = fullBag.payloadManifest();
+        Map<String, String> manif = fullBag.payloadManifest("SHA-512");
         assertTrue(manif.get("data/first.pdf").equals(manif.get("data/second.pdf")));
     }
 
@@ -373,7 +461,7 @@ public class BagTest {
         Path ttag1 = bagFile.resolve("tags/firstTag.txt");
         assertTrue(Files.exists(ttag1));
         // assure completeness
-        Bag bag = new Loader(bagFile).load();
+        Bag bag = load(bagFile);
         assertTrue(bag.isComplete());
         assertTrue(bag.isValid());
     }
@@ -402,7 +490,7 @@ public class BagTest {
         filler.payload("second.pdf", payload1);
         Path fullBag = filler.toDirectory();
         // manifest should have 2 lines - one for each payload
-        Path manif = fullBag.resolve("manifest-md5.txt");
+        Path manif = fullBag.resolve("manifest-sha512.txt");
         assertTrue(lineCount(manif) == 2);
     }
 
@@ -416,11 +504,11 @@ public class BagTest {
         }
         filler.payload("second.pdf", payload1);
         // without serialization, only non-stream payload available in manifest count
-        assertTrue(filler.getManifest().size() == 1);
+        assertTrue(filler.getManifest("SHA-512").size() == 1);
         // serialization required to flush payloadstream
         Path fullBag = filler.toDirectory();
         // manifest should have 2 lines - one for each payload
-        assertTrue(filler.getManifest().size() == 2);
+        assertTrue(filler.getManifest("SHA-512").size() == 2);
     }
 
     @Test
@@ -433,13 +521,13 @@ public class BagTest {
         }
         filler.payload("second.pdf", payload1);
         Path fullBag = filler.toDirectory();
-        Path manif = fullBag.resolve("tagmanifest-md5.txt");
+        Path manif = fullBag.resolve("tagmanifest-sha512.txt");
         // should have a line for bagit.txt, bag-info.txt, and manifest*.txt
         assertTrue(lineCount(manif) == 3);
     }
 
     @Test
-    public void StreamCloseIndifferentManifest() throws IOException {
+    public void streamCloseIndifferentManifest() throws IOException {
         Path bagFile = tempFolder.newFolder("bag22").toPath();
         Filler filler = new Filler(bagFile);
         OutputStream plout = filler.payloadStream("first.pdf");
@@ -451,7 +539,7 @@ public class BagTest {
         filler.payload("second.pdf", payload1);
         Path fullBag = filler.toDirectory();
         // manifest should have 2 lines - one for each payload
-        Path manif = fullBag.resolve("manifest-md5.txt");
+        Path manif = fullBag.resolve("manifest-sha512.txt");
         assertTrue(lineCount(manif) == 2);
     }
 
@@ -468,7 +556,7 @@ public class BagTest {
         filler.payload("second.pdf", payload1);
         Path fullBag = filler.toPackage();
         // Load this bag from package file
-        Bag loadedBag = new Loader(fullBag).load();
+        Bag loadedBag = load(fullBag);
         assertTrue(loadedBag.isComplete());
     }
 
@@ -485,8 +573,8 @@ public class BagTest {
         filler.payload("second.pdf", payload1);
         Path fullBag = filler.toPackage();
         // Load this bag from package file
-        Bag loadedBag = new Loader(fullBag).load();
-        assertNotNull(loadedBag.csAlgorithm());
+        Bag loadedBag = load(fullBag);
+        assertTrue(loadedBag.csAlgorithms().size() > 0);
     }
 
     @Test
@@ -502,8 +590,8 @@ public class BagTest {
         filler.payload("second.pdf", payload1);
         Path fullBag = filler.toPackage();
         // Load this bag from package file
-        Bag loadedBag = new Loader(fullBag).load();
-        assertTrue(loadedBag.csAlgorithm().equals("md5"));
+        Bag loadedBag = load(fullBag);
+        assertTrue(loadedBag.csAlgorithms().contains("SHA-512"));
     }
 
     @Test
@@ -519,7 +607,7 @@ public class BagTest {
         filler.payload("second.pdf", payload1);
         Path fullBag = filler.toPackage();
         // Load this bag from package file
-        Bag loadedBag = new Loader(fullBag).load();
+        Bag loadedBag = load(fullBag);
         assertTrue(loadedBag.isValid());
     }
 
@@ -536,7 +624,7 @@ public class BagTest {
         filler.payload("second.pdf", payload1);
         Path bagDir = filler.toDirectory();
         // Load this bag from package file
-        Bag loadedBag = new Loader(bagDir).load();
+        Bag loadedBag = load(bagDir);
         assertTrue(loadedBag.isValid());
     }
 
@@ -553,9 +641,8 @@ public class BagTest {
         filler.payload("second.pdf", payload1);
         Path fullBag = filler.toPackage();
         // Load this bag from stream
-        Loader loader = new Loader(Files.newInputStream(fullBag), "zip");
-        Bag loadedBag = loader.load();
-        assertNotNull(loadedBag.payloadManifest());
+        Bag loadedBag = load(Files.newInputStream(fullBag), "zip");
+        assertNotNull(loadedBag.payloadManifest("SHA-512"));
         assertTrue(loadedBag.isComplete());
     }
 
@@ -573,8 +660,7 @@ public class BagTest {
         Path fullBag = filler.toPackage();
         // Load this bag from stream
         Path newBag = tempFolder.newFolder("bag30").toPath();
-        Loader loader = new Loader(newBag, Files.newInputStream(fullBag), "zip");
-        Bag loadedBag = loader.load();
+        Bag loadedBag = load(newBag, Files.newInputStream(fullBag), "zip");
         assertTrue(loadedBag.isComplete());
     }
 
@@ -591,8 +677,7 @@ public class BagTest {
         filler.payload("second.pdf", payload1);
         Path fullBag = filler.toPackage();
         // Load this bag from stream
-        Loader loader = new Loader(Files.newInputStream(fullBag), "zip");
-        Bag loadedBag = loader.load();
+        Bag loadedBag = load(Files.newInputStream(fullBag), "zip");
         assertTrue(loadedBag.isValid());
     }
 
@@ -608,14 +693,14 @@ public class BagTest {
         // use bag-info.txt as representative text-file
         Path info = fullBag.resolve("bag-info.txt");
         // line ending is same as system-defined one
-        assertTrue(new Loader(fullBag).load().isValid());
+        assertTrue(load(fullBag).isValid());
         assertTrue(findSeparator(info).equals(System.lineSeparator()));
     }
 
     @Test
     public void unixEOLInTextFiles() throws IOException {
         Path bagFile = tempFolder.newFolder("bag33").toPath();
-        Filler filler = new Filler(bagFile, "MD5", StandardCharsets.UTF_8, Filler.EolRule.UNIX);
+        Filler filler = new Filler(bagFile, StandardCharsets.UTF_8, Filler.EolRule.UNIX, false, "SHA-512");
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
             plout.write("lskdflsfevmep".getBytes());
@@ -624,14 +709,14 @@ public class BagTest {
         // use bag-info.txt as representative text-file
         Path info = fullBag.resolve("bag-info.txt");
         // line ending is same as system-defined one
-        assertTrue(new Loader(fullBag).load().isValid());
+        assertTrue(load(fullBag).isValid());
         assertTrue(findSeparator(info).equals("\n"));
     }
 
     @Test
     public void windowsEOLInTextFiles() throws IOException {
         Path bagFile = tempFolder.newFolder("bag34").toPath();
-        Filler filler = new Filler(bagFile, "MD5", StandardCharsets.UTF_8, Filler.EolRule.WINDOWS);
+        Filler filler = new Filler(bagFile, StandardCharsets.UTF_8, Filler.EolRule.WINDOWS, false, "SHA-512");
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
             plout.write("lskdflsfevmep".getBytes());
@@ -640,14 +725,14 @@ public class BagTest {
         // use bag-info.txt as representative text-file
         Path info = fullBag.resolve("bag-info.txt");
         // line ending is same as system-defined one
-        assertTrue(new Loader(fullBag).load().isValid());
+        assertTrue(load(fullBag).isValid());
         assertTrue(findSeparator(info).equals("\r\n"));
     }
 
     @Test
     public void counterEOLInTextFiles() throws IOException {
         Path bagFile = tempFolder.newFolder("bag35").toPath();
-        Filler filler = new Filler(bagFile, "MD5", StandardCharsets.UTF_8, Filler.EolRule.COUNTER_SYSTEM);
+        Filler filler = new Filler(bagFile, StandardCharsets.UTF_8, Filler.EolRule.COUNTER_SYSTEM, false, "SHA-512");
         OutputStream plout = filler.payloadStream("first.pdf");
         for (int i = 0; i < 1000; i++) {
             plout.write("lskdflsfevmep".getBytes());
@@ -656,16 +741,16 @@ public class BagTest {
         // use bag-info.txt as representative text-file
         Path info = fullBag.resolve("bag-info.txt");
         // line ending is not the same as system-defined one
-        assertTrue(new Loader(fullBag).load().isValid());
+        assertTrue(load(fullBag).isValid());
         assertTrue(! findSeparator(info).equals(System.lineSeparator()));
     }
 
     @Test
     public void validAndInvalidBagUTF16() throws IOException {
         Path bagFile = tempFolder.newFolder("bag36").toPath();
-        Filler filler = new Filler(bagFile, "MD5", StandardCharsets.UTF_16).payload("first.pdf", payload1);
-        Bag bag = new Loader(filler.toDirectory()).load();
-        Map<String, String> tman = bag.tagManifest();
+        Filler filler = new Filler(bagFile, StandardCharsets.UTF_16, "MD5").payload("first.pdf", payload1);
+        Bag bag = load(filler.toDirectory());
+        Map<String, String> tman = bag.tagManifest("MD5");
         assertTrue(tman.size() == 3);
         assertTrue(tman.keySet().contains("bagit.txt"));
         assertTrue(tman.keySet().contains("bag-info.txt"));
