@@ -6,10 +6,13 @@
 package edu.mit.lib.bagit;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 
 /**
@@ -35,7 +38,7 @@ public class Bagger {
     private final List<String> optFlags = new ArrayList<>();
     private int verbosityLevel;
 
-    public static void main(String[] args) throws IOException, IllegalAccessException {
+    public static void main(String[] args) throws IOException, IllegalAccessException, URISyntaxException {
         if (args.length < 2) {
             usage();
         }
@@ -77,6 +80,7 @@ public class Bagger {
         System.out.println(
             "Options:\n" +
             "-p    [<bag path>=]<payload file>\n" +
+            "-r    [<bag path>=]<payload file>=<uri>\n" +
             "-t    [<bag path>=]<tag file>\n" +
             "-m    <name>=<value> - metadata statement\n" +
             "-a    <archive format> - e.g. 'zip', 'tgz', (default: loose directory)\n" +
@@ -93,11 +97,12 @@ public class Bagger {
 
     private Bagger() {}
 
-    private void fill(Path baseDir) throws IOException {
+    private void fill(Path baseDir) throws IOException, URISyntaxException {
         Filler filler = new Filler(baseDir, tagEnc, csAlg);
         if (optFlags.contains("nag")) {
-            filler.noAutoGen();
+            filler.autoGen(new HashSet<>());
         }
+
         for (String payload : payloads) {
             if (payload.indexOf("=") > 0) {
                 String[] parts = payload.split("=");
@@ -108,7 +113,8 @@ public class Bagger {
         }
         for (String reference : references) {
             String[] parts = reference.split("=");
-            filler.payloadRef(parts[0], 0L, parts[1]);
+            URI uri = new URI(parts[2]);
+            filler.payloadRef(parts[0], Paths.get(parts[1]), uri);
         }
         for (String tag : tags) {
             if (tag.indexOf("=") > 0) {

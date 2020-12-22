@@ -6,6 +6,8 @@ package edu.mit.lib.bagit;
 
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -164,6 +166,7 @@ public class BagTest {
         assertTrue(bag.isComplete());
         assertTrue(bag.isValid());
     }
+
     @Test
     public void basicBagPartsPresentMultiChecksum() throws IOException, IllegalAccessException {
         Path bagFile = tempFolder.newFolder("cs-bag6").toPath();
@@ -186,6 +189,78 @@ public class BagTest {
         Bag bag = load(bagFile);
         assertTrue(bag.isComplete());
         assertTrue(bag.isValid());
+    }
+
+    // tests for payload references (fetch.txt)
+    @Test
+    public void partsPresentFetchBag() throws IOException, URISyntaxException {
+        Path bagFile = tempFolder.newFolder("ft-bag1").toPath();
+        URI location = new URI("http://www.example.com/foo");
+        new Filler(bagFile).payload("first.pdf", payload1).payloadRef("second/second.pdf", payload2, location).toDirectory();
+        Path payloadDir = bagFile.resolve(DATA_DIR);
+        assertTrue(Files.isDirectory(payloadDir));
+        Path pload1 = payloadDir.resolve("first.pdf");
+        assertTrue(Files.exists(pload1));
+        Path pload2 = payloadDir.resolve("second/second.pdf");
+        assertTrue(!Files.exists(pload2));
+        Path fetch = bagFile.resolve("fetch.txt");
+        assertTrue(Files.exists(fetch));
+         // assure incompleteness
+        Bag bag = load(bagFile);
+        assertTrue(!bag.isComplete());
+    }
+
+    @Test(expected = IOException.class)
+    public void nonAbsoluteURIFetchBag() throws IOException, URISyntaxException {
+        Path bagFile = tempFolder.newFolder("ft-bag2").toPath();
+        URI location = new URI("/www.example.com/foo");
+        new Filler(bagFile).payload("first.pdf", payload1).payloadRef("second/second.pdf", payload2, location).toDirectory();
+        Path payloadDir = bagFile.resolve(DATA_DIR);
+        assertTrue(Files.isDirectory(payloadDir));
+        Path pload1 = payloadDir.resolve("first.pdf");
+        assertTrue(Files.exists(pload1));
+        Path pload2 = payloadDir.resolve("second/second.pdf");
+        assertTrue(!Files.exists(pload2));
+        Path fetch = bagFile.resolve("fetch.txt");
+        assertTrue(Files.exists(fetch));
+         // assure incompleteness
+        Bag bag = load(bagFile);
+        assertTrue(!bag.isComplete());
+    }
+
+    @Test
+    public void streamReadFetchBag() throws IOException, URISyntaxException {
+        Path bagFile = tempFolder.newFolder("ft-bag3").toPath();
+        URI location = new URI("http://www.example.com/foo");
+        InputStream plIS = Files.newInputStream(payload1);
+        new Filler(bagFile).payloadRef("second/second.pdf", plIS, location).toDirectory();
+        Path payloadDir = bagFile.resolve(DATA_DIR);
+        Path pload2 = payloadDir.resolve("second/second.pdf");
+        assertTrue(!Files.exists(pload2));
+        Path fetch = bagFile.resolve("fetch.txt");
+        assertTrue(Files.exists(fetch));
+         // assure incompleteness
+        Bag bag = load(bagFile);
+        assertTrue(!bag.isComplete());
+    }
+
+    @Test
+    public void partsPresentUnsafeFetchBag() throws IOException, URISyntaxException {
+        Path bagFile = tempFolder.newFolder("ft-bag4").toPath();
+        URI location = new URI("http://www.example.com/foo");
+        Map<String, String> algs = Map.of("SHA-512", "0f9d6b52621011d46dabe200fd28ab35f48665e2de4c728ff1b26178d746419df3f43d51057337362f2ab987d8dbdffd8df1ff91c4d65777d77dea38b48cb4dd");
+        new Filler(bagFile).payload("first.pdf", payload1).payloadRefUnsafe("second/second.pdf", 9070L, location, algs).toDirectory();
+        Path payloadDir = bagFile.resolve(DATA_DIR);
+        assertTrue(Files.isDirectory(payloadDir));
+        Path pload1 = payloadDir.resolve("first.pdf");
+        assertTrue(Files.exists(pload1));
+        Path pload2 = payloadDir.resolve("second/second.pdf");
+        assertTrue(!Files.exists(pload2));
+        Path fetch = bagFile.resolve("fetch.txt");
+        assertTrue(Files.exists(fetch));
+         // assure incompleteness
+        Bag bag = load(bagFile);
+        assertTrue(!bag.isComplete());
     }
 
     @Test
@@ -256,7 +331,7 @@ public class BagTest {
         assertNotNull(bag.metadata(BAG_SOFTWARE_AGENT));
         Path bagFile2 = tempFolder.newFolder("bag7").toPath();
         Filler filler2 = new Filler(bagFile2).payload("first.pdf", payload1);
-        filler2.noAutoGen().metadata(SOURCE_ORG, val2);
+        filler2.autoGen(new HashSet<>()).metadata(SOURCE_ORG, val2);
         Bag bag2 =  load(filler2.toDirectory());
         assertNull(bag2.metadata(BAGGING_DATE));
         assertNull(bag2.metadata(BAG_SIZE));
