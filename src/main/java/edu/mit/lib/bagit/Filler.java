@@ -6,10 +6,12 @@
 package edu.mit.lib.bagit;
 
 import java.io.BufferedOutputStream;
+import java.io.File;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.URI;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
@@ -25,13 +27,14 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+
+import javax.tools.DiagnosticCollector;
 
 import org.apache.commons.compress.archivers.ArchiveOutputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
@@ -259,17 +262,9 @@ public class Filler {
     }
 
     /**
-     * Disables the automatic generation of metadata.
-     * Normally generated: Bagging-Date, Bag-Size, Payload-Oxnum, Bag-Software-Agent
-     *
-     * @return Filler this Filler
-     */
-    public Filler noAutoGen() {
-        return autoGen(new HashSet<>());
-    }
-
-    /**
-     * Assigns the set of automatically generated metadata identifed by their names.
+     * Assigns the set of automatically generated metadata identifed by their names,
+     * replacing default set: Bagging-Date, Bag-Size, Payload-Oxnum, Bag-Software-Agent
+     * To disable automatic generation, pass in an empty set.
      * Unknown or non-auto-assignable names will be ignored.
      *
      * @param names the set of metadata names
@@ -370,20 +365,77 @@ public class Filler {
     }
 
     /**
-     * Adds a reference URL to payload contents - ie. to the fetch.txt file.
+     * Adds a resource identified by a URI reference to payload contents 
+     * i.e. to the fetch.txt file.
      *
-     * @param relPath the relative path of the resource
-     * @param size the expected size in bytes of the resource
-     * @param url the URL of the resource
+     * @param relPath the bag-relative path of the resource
+     * @param file the file to add to fetch list
+     * @param uri the URI of the resource
      * @return Filler this Filler
      * @throws IOException if error reading/writing ref data
      */
-    public Filler payloadRef(String relPath, long size, String url) throws IOException {
+    public Filler payloadRef(String relPath, Path file, URI uri) throws IOException {
+        return payloadRef(relPath, Files.newInputStream(file), uri);
+    }
+
+    /**
+     * Adds a resource identified by a URI reference to payload contents 
+     * i.e. to the fetch.txt file.
+     *
+     * @param relPath the bag-relative path of the resource
+     * @param in the input stream of resource to add to fetch list
+     * @param uri the URI of the resource
+     * @return Filler this Filler
+     * @throws IOException if error reading/writing ref data
+     */
+    public Filler payloadRef(String relPath, InputStream in, URI uri) throws IOException {
+        Path payloadFile = dataFile(relPath);
+        if (Files.exists(payloadFile)) {
+            throw new IllegalStateException("Payload file already exists at: " + relPath);
+        }
+        if (! uri.isAbsolute()) {
+            throw new IOException("URI must be absolute");
+        }
         FlatWriter refWriter = getWriter(REF_FILE);
-        String sizeStr = (size > 0L) ? Long.toString(size) : "-";
-        refWriter.writeLine(url + " " + sizeStr + " " + DATA_PATH + relPath);
-        payloadSize += size;
-        payloadCount++;
+        var destDir = Files.createTempDirectory("null");
+        var destFile = destDir.resolve("foo");
+        long size = digestCopy(in, destFile, relPath, manWriters);
+        var sizeStr = (size > 0L) ? Long.toString(size) : "-";
+        refWriter.writeLine(uri.toString() + " " + sizeStr + " " + DATA_PATH + relPath);
+        Files.delete(destFile);
+        Files.delete(destDir);
+        return this;
+    }
+
+    /**
+     * Adds a resource identified by a URI reference to payload contents 
+     * i.e. to the fetch.txt file. Caller assumes full responsibility for
+     * ensuring correctness of checksums and size - library does not verify.
+     *
+     * @param relPath the bag-relative path of the resource
+     * @param size the expected size of the resource in bytes
+     * @param uri the URI of the resource
+     * @param checksums map of algorithms to checksums of the resource
+     * @return Filler this Filler
+     * @throws IOException if error reading/writing ref data
+     */
+    public Filler payloadRefUnsafe(String relPath, long size, URI uri, Map<String, String> checksums) throws IOException {
+        Path payloadFile = dataFile(relPath);
+        if (Files.exists(payloadFile)) {
+            throw new IllegalStateException("Payload file already exists at: " + relPath);
+        }
+        if (! uri.isAbsolute()) {
+            throw new IOException("URI must be absolute");
+        }
+        if (! checksums.keySet().equals(csAlgs)) {
+            throw new IOException("checksums do not match bags");
+        }
+        for (String alg : manWriters.keySet()) {
+            manWriters.get(alg).writeLine(checksums.get(alg) + " " + relPath);
+        }
+        var sizeStr = (size > 0L) ? Long.toString(size) : "-";
+        FlatWriter refWriter = getWriter(REF_FILE);
+        refWriter.writeLine(uri.toString() + " " + sizeStr + " " + DATA_PATH + relPath);
         return this;
     }
 
@@ -565,7 +617,7 @@ public class Filler {
 
         public void writeLine(String line) throws IOException {
             if (record) {
-              lines.add(line);
+                lines.add(line);
             }
             write(filterBytes(line + lineSeparator, encoding, bomOut));
         }

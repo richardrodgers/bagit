@@ -5,6 +5,7 @@ by the BagIt Spec (IETF RFC 8493 version 1.0). It requires a Java 11 or better J
 commons compression library for support of tarred Gzip archive format (".tgz"), and is Apache 2 licensed. Build with Gradle.
 
 [![Build Status](https://travis-ci.org/richardrodgers/bagit.svg?branch=master)](https://travis-ci.org/richardrodgers/bagit)
+[![javadoc](https://javadoc.io/badge2/edu.mit.lib/bagit/javadoc.svg)](https://javadoc.io/doc/edu.mit.lib/bagit)
 
 ## Use Cases ##
 
