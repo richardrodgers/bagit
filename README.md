@@ -15,7 +15,7 @@ for transport/hand-off to another component or system. The goal here is to ensur
 A helper class - _Filler_ - is used to orchestrate this assembly. Sequence: new Filler -> add content -> add more content -> serialize.
 The second (the _consumer_ pattern) is where a bag serialization (or a loose directory) is given and must
 be interpreted and validated for use. Here another helper class - _Loader_ - is used to deserialize.
-Sequence: new Loader -> load serialization -> convert to Bag -> process contents. If you have more complex needs
+Sequence: Loader -> load serialization and convert to Bag -> process contents. If you have more complex needs
 in java, (e.g. support for multiple spec versions), you may wish to consider the [Library of Congress Java Library](https://github.com/LibraryOfCongress/bagit-java).
 
 ## Creating Bags (producer pattern) ##
@@ -65,7 +65,7 @@ For example, can choose to access the bag contents as an (unserialized) director
 In this case we need to indicate where we want to put the bag when we construct it:
 
     Path bagDir = new Filler(myDir).payload(file1).
-                  payloadRef("file2", 20000, http://www.example.com/data.0002").toDirectory();
+                  payloadRef("file2", file2, http://www.example.com/data.0002").toDirectory();
 
 ## Reading Bags (consumer pattern) ##
 
