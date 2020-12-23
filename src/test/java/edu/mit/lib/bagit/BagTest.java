@@ -8,10 +8,13 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.CopyOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.temporal.ChronoUnit;
 import java.util.Scanner;
@@ -414,6 +417,19 @@ public class BagTest {
         .compareTo(afterAttrs.creationTime().toInstant().truncatedTo(ChronoUnit.SECONDS)) == 0);
         assertTrue(beforeAttrs.lastModifiedTime().toInstant().truncatedTo(ChronoUnit.SECONDS)
         .compareTo(afterAttrs.lastModifiedTime().toInstant().truncatedTo(ChronoUnit.SECONDS)) == 0);
+    }
+
+    @Test
+    public void alternateArchiveNameTGZ() throws IOException, IllegalAccessException {
+        Path bagFile = tempFolder.newFolder("bag11c").toPath();
+        Path altFile = tempFolder.newFolder("bag11c.tar.gz").toPath();
+        Filler filler = new Filler(bagFile).payload("first.pdf", payload1);
+        Path bagPackage = filler.toPackage("tgz", false);
+        // copy to alternate form .tgz => .tar.gz
+        Files.move(bagPackage, altFile, StandardCopyOption.REPLACE_EXISTING);
+        Bag bag = load(altFile);
+        Path payload = bag.payloadFile("first.pdf");
+        assertTrue(Files.size(payload1) == Files.size(payload));
     }
 
     @Test
