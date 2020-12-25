@@ -118,10 +118,19 @@ If automatic generation is not desired, an API call disables it.
 Another extra is _sealed_ bags. Bags created by Loaders are immutable, meaning they cannot be altered via the API.
 But we typically _can_ gain access to the backing bag storage, which we can of course then
 change at will. However, if a bag is created as _sealed_ (a method on the Loader), all
-method calls that expose the underlying storage will throw IllegalAccess exceptions. So, for example,
-we would be _unable_ to obtain a File reference, but _could_ get an I/O stream to the same content.
+method calls that expose the underlying storage will throw IllegalAccess exceptions. So, for example, we would
+be _unable_ to obtain a File reference to a payload file, but _could_ get an I/O stream to the same content.
 In other words, the content can be accessed, but the underlying representation cannot be altered, and
 to this degree the bag contents are _tamper-proof_.
+
+Finally, the library bundles several convenience (helper) methods for common operations on bags, using
+the _Adapter_ class. One illustrative use case would be to upgrade an existing bag to a better checksum algorithm.
+One could code:
+
+    Bag oldbag = Loader.load(oldBagZip);
+    Path newbagZip = Adapter.copy(newbag, oldbag, "SHA-512").toPackage();
+
+Additional methods will be added as other common use-cases are identified.
 
 ## Bagger on the command line ##
 

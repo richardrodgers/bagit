@@ -402,7 +402,7 @@ public class Filler {
         FlatWriter refWriter = getWriter(REF_FILE);
         var destDir = Files.createTempDirectory("null");
         var destFile = destDir.resolve("foo");
-        long size = digestCopy(in, destFile, relPath, manWriters);
+        long size = digestCopy(in, destFile, DATA_PATH + relPath, manWriters);
         var sizeStr = (size > 0L) ? Long.toString(size) : "-";
         refWriter.writeLine(uri.toString() + " " + sizeStr + " " + DATA_PATH + relPath);
         Files.delete(destFile);
@@ -428,7 +428,7 @@ public class Filler {
             throw new IllegalStateException("Payload file already exists at: " + relPath);
         }
         if (! uri.isAbsolute()) {
-            throw new IOException("URI must be absolute");
+            throw new IOException("URI must be absolute: '" + uri.toString() + "'");
         }
         if (! checksums.keySet().equals(csAlgs)) {
             throw new IOException("checksums do not match bags");

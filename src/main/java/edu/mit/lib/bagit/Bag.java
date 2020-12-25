@@ -52,7 +52,7 @@ public class Bag {
     static final String LIB_VSN = "1.0";
     static final String DFLT_FMT = "zip";
     static final String TGZIP_FMT = "tgz";
-    static final String SPACER = "  ";
+    static final String SPACER = " ";
     // required file and directory names
     static final String MANIF_FILE = "manifest-";
     static final String TAGMANIF_FILE = "tagmanifest-";

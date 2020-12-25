@@ -10,6 +10,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -38,10 +39,10 @@ public class Adapter {
      */
     public static Filler copy(Bag bag) throws IOException, IllegalAccessException, URISyntaxException {
         var csAlgs = bag.csAlgorithms();
-        var algArray = new String[csAlgs.size()];
-        csAlgs.toArray(algArray);
-        var filler = new Filler(Files.createTempDirectory("bag"), bag.tagEncoding(), bag.lineSeparator(), true, algArray);
-        copyBag(filler, bag, csAlgs, algArray[0]);
+        var filler = new Filler(Files.createTempDirectory("bag"),
+                                bag.tagEncoding(), bag.lineSeparator(), true,
+                                csAlgs.toArray(String[]::new));
+        copyBag(filler, bag, csAlgs);
         return filler;
     }
 
@@ -60,10 +61,9 @@ public class Adapter {
      */
     public static Filler copy(Path base, Bag bag) throws IOException, IllegalAccessException, URISyntaxException {
         var csAlgs = bag.csAlgorithms();
-        var algArray = new String[csAlgs.size()];
-        csAlgs.toArray(algArray);
-        var filler = new Filler(base, bag.tagEncoding(), bag.lineSeparator(), false, algArray);
-        copyBag(filler, bag, csAlgs, algArray[0]);
+        var filler = new Filler(base, bag.tagEncoding(), bag.lineSeparator(), false,
+                                csAlgs.toArray(String[]::new));
+        copyBag(filler, bag, csAlgs);
         return filler;
     }
 
@@ -82,14 +82,21 @@ public class Adapter {
      * @throws URISyntaxException when invalid URIs encountered
      */
     public static Filler copy(Path base, Bag bag, String ... csAlgorithms) throws IOException, IllegalAccessException, URISyntaxException {
+        // ensure we can handle refs - bail if not
+        var algSet = new HashSet<String>(Arrays.asList(csAlgorithms));
+        if (! bag.payloadRefs().isEmpty() && ! bag.csAlgorithms().containsAll(algSet)) {
+            throw new IllegalStateException("Fetch file checksums absent for requested algorithms");
+        }
         var filler = new Filler(base, bag.tagEncoding(), bag.lineSeparator(), false, csAlgorithms);
-        copyBag(filler, bag, Set.of(csAlgorithms), csAlgorithms[0]);
+        copyBag(filler, bag, Set.of(csAlgorithms));
         return filler;
     }
 
-    private static void copyBag(Filler filler, Bag bag, Set<String> csAlgs, String csAlg) 
+    private static void copyBag(Filler filler, Bag bag, Set<String> newAlgs) 
         throws IOException, IllegalAccessException, URISyntaxException  {
         var manifs = new HashMap<String, Map<String, String>>();
+        var csAlgs = bag.csAlgorithms();
+        var csAlg = csAlgs.iterator().next();
         var refs = bag.payloadRefs();
         var autoGs = autoGens(csAlgs);
         var autoMs = autoMetas();
@@ -113,10 +120,10 @@ public class Adapter {
             }
         }
         for (String relPath : refs.keySet()) {
-            var refParts = refs.get(relPath).split(" ");
+            var refParts = refs.get(relPath).split("\\s+");
             var size = refParts[0].equals("-") ? -1L : Long.parseLong(refParts[0]);
             var checksums = new HashMap<String, String>();
-            for (String alg : csAlgs) {
+            for (String alg : newAlgs) {
                 checksums.put(alg, manifs.get(alg).get(relPath));
             }
             filler.payloadRefUnsafe(relPath, size, new URI(refParts[1]), checksums);
@@ -129,7 +136,6 @@ public class Adapter {
                 }
             }
         }
-
     }
 
     private static Set<String> autoGens(Set<String> csAlgs) {
