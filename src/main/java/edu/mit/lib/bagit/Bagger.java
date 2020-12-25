@@ -31,10 +31,11 @@ public class Bagger {
     private final List<String> references = new ArrayList<>();
     private final List<String> tags = new ArrayList<>();
     private final List<String> statements = new ArrayList<>();
+    private final List<String> csAlgorithms = new ArrayList<>();
     private String basis;
     private String archFmt = "directory";
     private boolean noTime = false;
-    private String csAlg = "SHA-512";
+    private String defaultCsAlg = "SHA-512";
     private Charset tagEnc = Charset.defaultCharset();
     private final List<String> optFlags = new ArrayList<>();
     private int verbosityLevel;
@@ -54,7 +55,7 @@ public class Bagger {
                 case "-b": bagger.basis = args[i+1]; break;
                 case "-n": bagger.noTime = Boolean.valueOf(args[i+1]); break;
                 case "-a": bagger.archFmt = args[i+1]; break;
-                case "-c": bagger.csAlg = args[i+1]; break;
+                case "-c": bagger.csAlgorithms.add(args[i+1]); break;
                 case "-e": bagger.tagEnc = Charset.forName(args[i+1]); break;
                 case "-o": bagger.optFlags.add(args[i+1]); break;
                 case "-v": bagger.verbosityLevel = Integer.parseInt(args[i+1]); break;
@@ -104,9 +105,18 @@ public class Bagger {
 
         Filler filler = null;
         if (basis != null) {
-            filler = Adapter.copy(baseDir, Loader.load(Paths.get(basis)));
+            if (csAlgorithms.isEmpty()) {
+                // use existing bag's checksum algorithms
+                filler = Adapter.copy(baseDir, Loader.load(Paths.get(basis)));
+            } else {
+                filler = Adapter.copy(baseDir, Loader.load(Paths.get(basis)), csAlgorithms.toArray(String[]::new));
+            }
         } else {
-            filler = new Filler(baseDir, tagEnc, csAlg);
+            if (csAlgorithms.isEmpty()) {
+                // use default
+                csAlgorithms.add(defaultCsAlg);
+            }
+            filler = new Filler(baseDir, tagEnc, csAlgorithms.toArray(String[]::new));
         }
         if (optFlags.contains("nag")) {
             filler.autoGen(new HashSet<>());

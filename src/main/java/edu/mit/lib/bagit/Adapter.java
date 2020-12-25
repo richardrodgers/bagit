@@ -62,8 +62,28 @@ public class Adapter {
         var csAlgs = bag.csAlgorithms();
         var algArray = new String[csAlgs.size()];
         csAlgs.toArray(algArray);
-        var filler = new Filler(base, bag.tagEncoding(), bag.lineSeparator(), true, algArray);
+        var filler = new Filler(base, bag.tagEncoding(), bag.lineSeparator(), false, algArray);
         copyBag(filler, bag, csAlgs, algArray[0]);
+        return filler;
+    }
+
+    /**
+     * Returns a new Filler (bag builder) instance using passed
+     * directory to hold a non-transient bag prepopulated with the
+     * contents of passed bag, and configured to use the passed
+     * checksum algorithms, and the bag's encoding and line termination.
+     * 
+     * @param base the base directory in which to construct the bag
+     * @param bag the bag whose content to prepopulate into filler
+     * @param csAlgorithms one or more checksum argorithms to use
+     * @return filler a Bag builder
+     * @throws IOException if file IO fails
+     * @throws IllegalAccessException when sealed contents are accessed
+     * @throws URISyntaxException when invalid URIs encountered
+     */
+    public static Filler copy(Path base, Bag bag, String ... csAlgorithms) throws IOException, IllegalAccessException, URISyntaxException {
+        var filler = new Filler(base, bag.tagEncoding(), bag.lineSeparator(), false, csAlgorithms);
+        copyBag(filler, bag, Set.of(csAlgorithms), csAlgorithms[0]);
         return filler;
     }
 
