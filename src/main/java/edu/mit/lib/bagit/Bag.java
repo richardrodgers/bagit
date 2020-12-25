@@ -26,6 +26,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import edu.mit.lib.bagit.Filler.EolRule;
+
 /**
  * Bag represents a rudimentary bag conformant to IETF Bagit spec: rfc 8493 version 1.0.
  * A Bag is a directory with contents and a little structured metadata in it.
@@ -158,6 +160,23 @@ public class Bag {
      */
     public Charset tagEncoding() throws IOException {
         return tagEncoding;
+    }
+
+    /**
+     * Returns the line separator used by tag files
+     * 
+     * @return EOLRule separator the line separator
+     * @throws IOException if unable to read tag file
+     */
+    public EolRule lineSeparator() throws IOException {
+        try (InputStream in = Files.newInputStream(bagFile(DECL_FILE))) {
+            byte[] buf = in.readNBytes(20);
+            switch(buf[18]) {
+                case '\n': return EolRule.UNIX;
+                case '\r': return (buf[19] == '\n') ? EolRule.WINDOWS : EolRule.CLASSIC;
+                default: return EolRule.UNIX;
+            }
+        }
     }
 
     /**
@@ -324,8 +343,11 @@ public class Bag {
     }
 
     /**
-     * Returns a map of payload files to their fetch URLs
-     * (i.e. contents of fetch.txt).
+     * Returns a map of payload files to their fetch URLs and
+     * estimated sizes (i.e. contents of fetch.txt). Map keys
+     * are bag-relative file paths, and values have the form:
+     * "size url" where 'size' is numeric or '-' and a space
+     * separates the size from the URL.
      *
      * @return refMap the map of payload files to fetch URLs
      * @throws IOException if unable to read refs data
@@ -372,6 +394,32 @@ public class Bag {
     public InputStream tagStream(String relPath) throws IOException {
         Path tagFile = bagFile(relPath);
         return Files.exists(tagFile) ? Files.newInputStream(tagFile) : null;
+    }
+
+     /**
+     * Returns the names of all the metadata properties in
+     * the standard metadata file (bag-info.txt) in order declared.
+     *
+     * @return values property values for passed name, or empty list if no such property defined.
+     * @throws IOException if unable to read metadata
+     */
+    public List<String> metadataNames() throws IOException {
+        var names = new ArrayList<String>();
+        try (BufferedReader reader = Files.newBufferedReader(bagFile(META_FILE), tagEncoding)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                // if line does not start with spacer, it is a new property
+                if (! line.startsWith(SPACER)) {
+                    // add name if new
+                    int split = line.indexOf(":");
+                    var propName = line.substring(0, split).trim();
+                    if (! names.contains(propName)) {
+                        names.add(propName);
+                    }
+                } 
+            }
+        }
+        return names;
     }
 
     /**
@@ -544,7 +592,8 @@ public class Bag {
                 String line;
                 while((line = reader.readLine()) != null) {
                     String[] parts = line.split("\\s+");
-                    refMap.put(parts[2], parts[0]);
+                    String value = parts[1] + SPACER + parts[0];
+                    refMap.put(parts[2], value);
                 }
             }
         }

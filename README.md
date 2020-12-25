@@ -85,7 +85,7 @@ If we wish to prevent manipulation of the hydrated bag (see below), we can seal 
 
     Bag bag = Loader.seal(secureZipFile);
 
-For all the API details consult the [Javadoc](http://richardrodgers.github.io/bagit/javadoc/index.html)
+For all the API details consult the [Javadoc](https://javadoc.io/doc/edu.mit.lib/bagit)
 
 ## Portability ##
 
@@ -97,7 +97,7 @@ to specify a preference when creating bags. Thus, if the context of use (lifecyc
 a Windows environment, the library can be instructed to use Windows line termination for the generated text files in bags,
 even if the bags are being generated on a Unix system. By default, the library will use the termination of the
 operating system it is running on ('CR/LF' on Windows, '\n' on Unix and MacOS), but this can be overridden.
-See the [Javadoc](http://richardrodgers.github.io/bagit/javadoc/index.html) for details.
+See the [Javadoc](https://javadoc.io/doc/edu.mit.lib/bagit) for details.
 
 ## Archive formats ##
 

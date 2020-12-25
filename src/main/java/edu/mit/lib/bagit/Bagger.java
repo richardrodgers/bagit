@@ -17,7 +17,7 @@ import java.util.List;
 
 /**
  * Bagger is a command-line interface to the BagIt library.
- * It allows simple creation, serialization, and validation of Bags.
+ * It provides simple creation, serialization, and validation of Bags.
  *
  * See README for sample invocations.
  *
@@ -31,6 +31,7 @@ public class Bagger {
     private final List<String> references = new ArrayList<>();
     private final List<String> tags = new ArrayList<>();
     private final List<String> statements = new ArrayList<>();
+    private String basis;
     private String archFmt = "directory";
     private boolean noTime = false;
     private String csAlg = "SHA-512";
@@ -50,6 +51,7 @@ public class Bagger {
                 case "-r": bagger.references.add(args[i+1]); break;
                 case "-t": bagger.tags.add(args[i+1]); break;
                 case "-m": bagger.statements.add(args[i+1]); break;
+                case "-b": bagger.basis = args[i+1]; break;
                 case "-n": bagger.noTime = Boolean.valueOf(args[i+1]); break;
                 case "-a": bagger.archFmt = args[i+1]; break;
                 case "-c": bagger.csAlg = args[i+1]; break;
@@ -83,6 +85,7 @@ public class Bagger {
             "-r    [<bag path>=]<payload file>=<uri>\n" +
             "-t    [<bag path>=]<tag file>\n" +
             "-m    <name>=<value> - metadata statement\n" +
+            "-b    <basis bag path> - basis bag for fill\n" +
             "-a    <archive format> - e.g. 'zip', 'tgz', (default: loose directory)\n" +
             "-n    <noTime> - 'true' or 'false'\n" +
             "-c    <checksum algorithm> - default: 'SHA-512'\n" +
@@ -97,8 +100,14 @@ public class Bagger {
 
     private Bagger() {}
 
-    private void fill(Path baseDir) throws IOException, URISyntaxException {
-        Filler filler = new Filler(baseDir, tagEnc, csAlg);
+    private void fill(Path baseDir) throws IOException, IllegalAccessException, URISyntaxException {
+
+        Filler filler = null;
+        if (basis != null) {
+            filler = Adapter.copy(baseDir, Loader.load(Paths.get(basis)));
+        } else {
+            filler = new Filler(baseDir, tagEnc, csAlg);
+        }
         if (optFlags.contains("nag")) {
             filler.autoGen(new HashSet<>());
         }

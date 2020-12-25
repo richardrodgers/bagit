@@ -6,7 +6,6 @@
 package edu.mit.lib.bagit;
 
 import java.io.BufferedOutputStream;
-import java.io.File;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -33,8 +32,6 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-
-import javax.tools.DiagnosticCollector;
 
 import org.apache.commons.compress.archivers.ArchiveOutputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
@@ -104,7 +101,11 @@ public class Filler {
         /**
          * Use Windows CR/LF separators
          */
-        WINDOWS
+        WINDOWS,
+        /**
+         * Use old Mac '\r' separators
+         */
+        CLASSIC
     }
 
     /**
@@ -173,6 +174,7 @@ public class Filler {
      *            COUNTER_SYSTEM - if on Windows, use Unix EOL, else reverse
      *            UNIX - use newline character line termination
      *            WINDOWS - use CR/LF line termination
+     *            CLASSIC - use CR line termination
      * @param transientBag if true, remove after reading network stream closes
      * @param csAlgorithms list of checksum algorithms (may be one)
      *
@@ -204,6 +206,7 @@ public class Filler {
             case SYSTEM: lineSeparator = sysEol; break;
             case UNIX: lineSeparator = "\n"; break;
             case WINDOWS: lineSeparator = "\r\n"; break;
+            case CLASSIC: lineSeparator = "\r"; break;
             case COUNTER_SYSTEM: lineSeparator = "\n".equals(sysEol) ? "\r\n" : "\n"; break;
             default: lineSeparator = sysEol; break;
         }
@@ -413,7 +416,7 @@ public class Filler {
      * ensuring correctness of checksums and size - library does not verify.
      *
      * @param relPath the bag-relative path of the resource
-     * @param size the expected size of the resource in bytes
+     * @param size the expected size of the resource in bytes, use -1L for unknown
      * @param uri the URI of the resource
      * @param checksums map of algorithms to checksums of the resource
      * @return Filler this Filler
