@@ -6,8 +6,10 @@
  * pom-default.xml generated in build/poms, and go in peace.
  */
 
-apply plugin: 'java'
-//apply plugin: 'maven'
+plugins {
+    id 'java'
+    //id 'maven'
+}
 
 repositories {
     mavenCentral()
@@ -17,7 +19,7 @@ sourceCompatibility = 11
 
 group = 'edu.mit.lib'
 archivesBaseName = 'bagit'
-version = '1.0'
+version = '1.1'
 description = 'Compact Java BagIt library'
 
 ext {
@@ -28,25 +30,21 @@ ext {
 }
 
 dependencies {
-    compile 'org.apache.commons:commons-compress:1.20'
+    implementation 'org.apache.commons:commons-compress:1.20'
     testImplementation 'junit:junit:4.11'
 }
 
-task fatJar(type: Jar) {
+tasks.register('uberJar', Jar) {
     manifest {
         attributes 'Main-Class': 'edu.mit.lib.bagit.Bagger'
     }
-    baseName = archivesBaseName + '-all'
-    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
-    with jar
-}
 
-task sourcesJar(type: Jar) {
-    classifier = 'sources'
-    from sourceSets.main.allSource
-}
+    archiveClassifier = 'uber'
 
-task javadocJar(type: Jar, dependsOn: javadoc) {
-    classifier = 'javadoc'
-    from javadoc.destinationDir
+    from sourceSets.main.output
+    
+    dependsOn configurations.runtimeClasspath
+    from {
+        configurations.runtimeClasspath.findAll { it.name.endsWith('jar') }.collect { zipTree(it) }
+    }
 }
