@@ -404,7 +404,7 @@ public class Filler {
         var destFile = destDir.resolve("foo");
         long size = digestCopy(in, destFile, DATA_PATH + relPath, manWriters);
         var sizeStr = (size > 0L) ? Long.toString(size) : "-";
-        refWriter.writeLine(uri.toString() + " " + sizeStr + " " + DATA_PATH + relPath);
+        refWriter.writeLine(uri.toString() + " " + sizeStr + " " + DATA_PATH + encodePath(relPath));
         Files.delete(destFile);
         Files.delete(destDir);
         return this;
@@ -434,11 +434,11 @@ public class Filler {
             throw new IOException("checksums do not match bags");
         }
         for (String alg : manWriters.keySet()) {
-            manWriters.get(alg).writeLine(checksums.get(alg) + " " + relPath);
+            manWriters.get(alg).writeLine(checksums.get(alg) + " " + encodePath(relPath));
         }
         var sizeStr = (size > 0L) ? Long.toString(size) : "-";
         FlatWriter refWriter = getWriter(REF_FILE);
-        refWriter.writeLine(uri.toString() + " " + sizeStr + " " + DATA_PATH + relPath);
+        refWriter.writeLine(uri.toString() + " " + sizeStr + " " + DATA_PATH + encodePath(relPath));
         return this;
     }
 
@@ -619,10 +619,12 @@ public class Filler {
         }
 
         public void writeLine(String line) throws IOException {
+            var encLine = line;
             if (record) {
                 lines.add(line);
+                encLine = encodePath(line);
             }
-            write(filterBytes(line + lineSeparator, encoding, bomOut));
+            write(filterBytes(encLine + lineSeparator, encoding, bomOut));
         }
 
         public List<String> getLines() {

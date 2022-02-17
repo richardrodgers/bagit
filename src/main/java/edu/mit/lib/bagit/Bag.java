@@ -49,7 +49,7 @@ public class Bag {
     // coding constants
     static final String DEFAULT_CS_ALGO = "SHA-512";
     static final String BAGIT_VSN = "1.0";
-    static final String LIB_VSN = "1.0";
+    static final String LIB_VSN = "1.1";
     static final String DFLT_FMT = "zip";
     static final String TGZIP_FMT = "tgz";
     static final String SPACER = " ";
@@ -526,7 +526,7 @@ public class Bag {
             String line;
             while((line = reader.readLine()) != null) {
                 String[] parts = line.split("\\s+", 2);
-                mfMap.put(parts[1], parts[0]);
+                mfMap.put(decodePath(parts[1]), parts[0]);
             }
         }
         return mfMap;
@@ -650,6 +650,14 @@ public class Bag {
         } else {
             return dbytes;
         }
+    }
+
+    static String encodePath(String path) {
+        return path.replaceAll("%", "%25").replaceAll("\n", "%0A").replaceAll("\r", "%0D");
+    }
+
+    static String decodePath(String path) {
+        return path.replaceAll("%25", "%").replaceAll("%0A", "\n").replaceAll("%0D", "\r");
     }
 
     private static final char[] HEX_CHARS = "0123456789abcdef".toCharArray();
