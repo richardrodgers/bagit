@@ -657,7 +657,7 @@ public class Bag {
     }
 
     static String decodePath(String path) {
-        return path.replaceAll("%25", "%").replaceAll("%0A", "\n").replaceAll("%0D", "\r");
+        return path.replaceAll("%0A", "\n").replaceAll("%0D", "\r").replaceAll("%25", "%");
     }
 
     private static final char[] HEX_CHARS = "0123456789abcdef".toCharArray();
