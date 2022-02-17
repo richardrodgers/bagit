@@ -19,6 +19,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.time.temporal.ChronoUnit;
 import java.util.Scanner;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -851,6 +852,45 @@ public class BagTest {
         Path toDel = bagFile.resolve("data/first.pdf");
         Files.delete(toDel);
         assertTrue(!bag.isValid());
+    }
+
+    @Test
+    public void percentPathNamePayloadBag() throws IOException {
+        Path bagFile = tempFolder.newFolder("bag37").toPath();
+        new Filler(bagFile).payload("first%1.pdf", payload1).payload("second/second%2.pdf", payload2).toDirectory();
+        Path payloadDir = bagFile.resolve(DATA_DIR);
+        assertTrue(Files.isDirectory(payloadDir));
+        Path pload1 = payloadDir.resolve("first%1.pdf");
+        assertTrue(Files.exists(pload1));
+        Path pload2 = payloadDir.resolve("second/second%2.pdf");
+        assertTrue(Files.exists(pload2));
+        // look in manifest files for encoded path names
+        String manifLine = readTextLine(bagFile.resolve("manifest-sha512.txt"), 0);
+        assertTrue(manifLine.endsWith("first%251.pdf"));
+        String manifLine2 = readTextLine(bagFile.resolve("manifest-sha512.txt"), 1);
+        assertTrue(manifLine2.endsWith("second%252.pdf"));
+         // assure completeness
+        Bag bag = load(bagFile);
+        assertTrue(bag.isComplete());
+        assertTrue(bag.isValid());
+    }
+
+    @Test
+    public void percentPathNameFetchBag() throws IOException, URISyntaxException {
+        Path bagFile = tempFolder.newFolder("bag38").toPath();
+        URI location = new URI("http://www.example.com/foo");
+        URI location2 = new URI("http://www.example.com/foo");
+        new Filler(bagFile).payloadRef("first%1.pdf", payload1, location).payloadRef("second/second%2.pdf", payload2, location2).toDirectory();
+        // look in fetch file for encoded path names
+        String manifLine = readTextLine(bagFile.resolve("fetch.txt"), 0);
+        assertTrue(manifLine.endsWith("first%251.pdf"));
+        String manifLine2 = readTextLine(bagFile.resolve("fetch.txt"), 1);
+        assertTrue(manifLine2.endsWith("second%252.pdf"));
+    }
+
+    private String readTextLine(Path file, int lineNum) throws IOException {
+        final List<String> lines = Files.readAllLines(file);
+        return lines.get(lineNum);
     }
 
     private String findSeparator(Path file) throws IOException {
